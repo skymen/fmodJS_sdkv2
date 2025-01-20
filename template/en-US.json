@@ -1,12 +1,12 @@
 {
   "languageTag": "en-US",
-  "fileDescription": "Strings for sample_addon.",
+  "fileDescription": "Strings for skymen_fmod_js.",
   "text": {
     "plugins": {
-      "sample_addon": {
-        "name": "Sample Addon",
-        "description": "Description",
-        "help-url": "https://www.construct.net",
+      "skymen_fmod_js": {
+        "name": "(FMOD) JS API",
+        "description": "JS Implementation of FMOD for Construct 3",
+        "help-url": "https://www.construct.net/en/make-games/addons/1207/fmod-js-api/documentation",
         "aceCategories": {
           "Aces_Files_In_Category_Folder": "Aces_Files_In_Category_Folder",
           "Ace_Folders_In_Category_Folder": "Ace_Folders_In_Category_Folder",

@@ -7,19 +7,30 @@ import {
 import _version from "./version.js";
 export const addonType = ADDON_TYPE.PLUGIN;
 export const type = PLUGIN_TYPE.OBJECT;
-export const id = "sample_addon";
-export const name = "Sample Addon";
+export const id = "skymen_fmod_js";
+export const name = "(FMOD) JS API";
 export const version = _version;
 export const author = "skymen";
-export const website = "https://www.construct.net";
-export const documentation = "https://www.construct.net";
-export const description = "Description";
-export const category = ADDON_CATEGORY.GENERAL;
+export const website = "https://github.com/skymen/fmodJS_sdkv2";
+export const documentation =
+  "https://www.construct.net/en/make-games/addons/1207/fmod-js-api/documentation";
+export const description = "JS Implementation of FMOD for Construct 3";
+export const category = ADDON_CATEGORY.MEDIA;
 
-export const hasDomside = false;
+export const hasDomside = true;
 export const files = {
   extensionScript: {},
-  fileDependencies: [],
+  fileDependencies: [
+    {
+      filename: "fmodstudio.js",
+      type: "external-dom-script",
+    },
+    {
+      filename: "fmodstudio.wasm",
+      type: "copy-to-output",
+      fileType: "application/wasm",
+    },
+  ],
 };
 
 // categories that are not filled will use the folder name
