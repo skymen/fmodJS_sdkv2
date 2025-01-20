@@ -7,7 +7,7 @@ import fromConsole from "./fromConsole.js";
 function getFileListFromConfig() {
   const files = [];
   if (config.hasDomside) {
-    files.push("c3runtime/domSide.js");
+    files.push("c3runtime/domside.js");
   }
 
   if (config.files.extensionScript && config.files.extensionScript.enabled) {

@@ -61,7 +61,7 @@ export default function (ADDON_INFO, parentClass) {
         }
 
         if (ADDON_INFO.hasDomside) {
-          this._info.SetDOMSideScripts(["c3runtime/domSide.js"]);
+          this._info.SetDOMSideScripts(["c3runtime/domside.js"]);
         }
 
         if (
