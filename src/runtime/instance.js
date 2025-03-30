@@ -18,7 +18,8 @@ export default function (parentClass) {
     }
 
     SendMessage(id, data) {
-      this._postToDOMMaybeSync(id, data);
+      // this._postToDOMMaybeSync(id, data);
+      this._postToDOM(id, data);
     }
 
     SendMessageAsync(id, data) {

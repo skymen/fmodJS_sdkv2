@@ -1,26 +1,41 @@
 export default function (parentClass) {
-  return class extends parentClass {
+  return class FMODManager extends parentClass {
+    //====================================================================
+    // Constructor
+    //====================================================================
     constructor(iRuntime) {
       super(iRuntime);
+
+      // FMOD Configuration
       this.FMOD = {};
       this.FMOD["preRun"] = this.preRun.bind(this);
       this.FMOD["onRuntimeInitialized"] = this.onRuntimeInitialized.bind(this);
       this.FMOD["INITIAL_MEMORY"] = 80 * 1024 * 1024;
+
+      // State variables
       this.gWantSampleLoad = true;
       this.lastSuspendTime = 0;
       this._preRunCallbacks = [];
       this._initCallbacks = [];
+
+      // Audio resources tracking
       this.banks = [];
       this.events = {};
       this.buses = {};
       this.vcas = {};
       this.banksByName = new Map();
       this.banksByPath = new Map();
-      this.SetUpDOMHandlers();
+
+      // Scheduling
       this.nextTickArray = [];
+
+      // Initialize handlers
+      this.SetUpDOMHandlers();
     }
 
-    // ===== SET UP FUNCTIONS
+    //====================================================================
+    // Initialization Methods
+    //====================================================================
 
     SetUpDOMHandlers() {
       this.AddRuntimeMessageHandlers([
@@ -30,12 +45,7 @@ export default function (parentClass) {
           ([path, preload, nonBlocking, name, url]) =>
             this.PreInitLoadBank(path, preload, nonBlocking, name, url),
         ],
-        [
-          "start-one-time-event",
-          ([event]) => {
-            this.startOneTimeEvent(event);
-          },
-        ],
+        ["start-one-time-event", ([event]) => this.startOneTimeEvent(event)],
         ["update", () => this.update()],
         ["load-bank", ([name]) => this.loadBank(name)],
         ["unload-bank", ([name]) => this.unloadBank(name)],
@@ -93,6 +103,15 @@ export default function (parentClass) {
         [
           "set-event-paused",
           ([name, tag, paused]) => this.setEventPaused(name, tag, paused),
+        ],
+        [
+          "set-event-timeline-position",
+          ([name, tag, position]) =>
+            this.setEventTimelinePosition(name, tag, position),
+        ],
+        [
+          "wait-for-event-stop",
+          ([name, tag]) => this.waitForEventStop(name, tag),
         ],
         [
           "set-event-3d-attributes",
@@ -162,16 +181,14 @@ export default function (parentClass) {
         ["set-nb-listeners", ([nb]) => this.setNbListeners(nb)],
         ["set-bus-muted", ([bus, muted]) => this.setBusMuted(bus, muted)],
         ["set-bus-volume", ([bus, volume]) => this.setBusVolume(bus, volume)],
+        ["set-bus-paused", ([bus, paused]) => this.setBusPaused(bus, paused)],
+        ["stop-all-bus-events", ([bus]) => this.stopAllBusEvents(bus)],
         ["set-vca-volume", ([vca, volume]) => this.setVCAVolume(vca, volume)],
         [
           "set-suspended",
           ([suspended, time]) => this.setSuspended(suspended, time),
         ],
       ]);
-    }
-
-    nextTick(fn) {
-      this.nextTickArray.push(fn);
     }
 
     PreInitLoadBank(path, preload, nonBlocking, name, url) {
@@ -188,23 +205,6 @@ export default function (parentClass) {
       this.banksByPath.set(path, bank);
     }
 
-    CreatePreloadedFiles() {
-      // This helper function did not help at all so I'm giving up on using the excuse of a File System the FMOD API provides, and I am loading shit manually.
-      return;
-      this.banks.forEach((bank) => {
-        this.FMOD.FS_createPreloadedFile(
-          bank.path.split("/").slice(0, -1).join("/"),
-          bank.name,
-          bank.url,
-          true,
-          false,
-          undefined,
-          undefined,
-          true
-        );
-      });
-    }
-
     async WaitForPreloadBanks() {
       await Promise.all(
         this.banks.map(async (bank) => {
@@ -218,14 +218,13 @@ export default function (parentClass) {
 
     PreInit() {
       return Promise.all([
-        new Promise((resolve, reject) => {
+        new Promise((resolve) => {
           this._preRunCallbacks.push(() => {
-            this.CreatePreloadedFiles();
             resolve();
           });
           this.HandleInit();
         }),
-        new Promise((resolve, reject) => {
+        new Promise((resolve) => {
           this._initCallbacks.push(async () => {
             await this.WaitForPreloadBanks();
             resolve();
@@ -244,61 +243,66 @@ export default function (parentClass) {
       globalThis.FMODModule(this.FMOD);
     }
 
-    // ===== HELPER FUNCTIONS
-
-    awaitBankLoadedState(bank, state) {
-      return new Promise((resolve, reject) => {
-        const outval = {};
-        bank.bankHandle.getLoadingState(outval);
-        if (outval.val === state) {
-          resolve();
-          return;
-        }
-        let interval = setInterval(() => {
-          bank.bankHandle.getLoadingState(outval);
-          if (outval.val === state) {
-            clearInterval(interval);
-            resolve();
-          }
-        }, 100);
-      });
-    }
-
-    async fetchUrlAsInt8Array(url) {
-      try {
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-
-        const buffer = await response.arrayBuffer();
-        return new Int8Array(buffer);
-      } catch (error) {
-        console.error("Error fetching URL:", error);
-      }
-    }
-
-    assert(result) {
-      if (result != this.FMOD.OK) {
-        console.error("FMOD error:", this.FMOD.ErrorString(result));
-        throw this.FMOD.ErrorString(result);
-      }
-    }
-
-    // ===== FMOD SET UP FUNCTIONS
-
     preRun() {
       this._preRunCallbacks.forEach((cb) => cb());
       this._preRunCallbacks = [];
     }
 
+    onRuntimeInitialized() {
+      // Initialize the system
+      this.initSystem();
+
+      // Set up iOS/Chrome workaround. Webaudio is not allowed to start unless screen is touched or button is clicked.
+      const resumeAudio = (realTry = true) => {
+        if (!this.gAudioResumed) {
+          this.FMOD["OutputAudioWorklet_resumeAudio"]();
+          this.assert(this.gSystemCore.mixerSuspend());
+          this.assert(this.gSystemCore.mixerResume());
+          if (realTry) {
+            this.gAudioResumed = true;
+          } else {
+            this.FMOD.mInputRegistered = true;
+          }
+        }
+      };
+
+      const interactionEvents = [
+        "click",
+        "touchstart",
+        "keydown",
+        "mousedown",
+        "mouseup",
+        "touchend",
+        "touchcancel",
+      ];
+      interactionEvents.forEach((event) => {
+        document.addEventListener(event, (event) => {
+          resumeAudio(true);
+        });
+      });
+
+      this.assert(
+        this.gSystem.setCallback(
+          this.studioCallback.bind(this),
+          this.FMOD.STUDIO_SYSTEM_CALLBACK_BANK_UNLOAD
+        )
+      );
+
+      this._loaded = true;
+      this._initCallbacks.forEach((cb) => cb());
+      this._initCallbacks = [];
+
+      resumeAudio(false);
+
+      return this.FMOD.OK;
+    }
+
     studioCallback(system, type, commanddata, userdata) {
       if (type === this.FMOD.STUDIO_SYSTEM_CALLBACK_BANK_UNLOAD) {
-        var bank = commanddata;
-        var outval = {};
+        const bank = commanddata;
+        const outval = {};
 
         this.assert(bank.getUserData(outval));
-
         console.log("BANK_UNLOAD", outval);
       }
       return this.FMOD.OK;
@@ -326,7 +330,7 @@ export default function (parentClass) {
 
       this.assert(
         this.gSystem.setAdvancedSettings({
-          commandqueuesize: 0,
+          commandqueuesize: 10,
           handleinitialsize: 0,
           studioupdateperiod: 20,
           idlesampledatapoolsize: 0,
@@ -344,73 +348,92 @@ export default function (parentClass) {
       );
     }
 
-    onRuntimeInitialized() {
-      // A temporary empty object to hold our system
-      var result;
+    //====================================================================
+    // Utility Methods
+    //====================================================================
 
-      this.initSystem();
-
-      // Set up iOS/Chrome workaround.  Webaudio is not allowed to start unless screen is touched or button is clicked.
-      const resumeAudio = (realTry = true) => {
-        if (!this.gAudioResumed) {
-          this.FMOD["OutputAudioWorklet_resumeAudio"]();
-          this.assert(this.gSystemCore.mixerSuspend());
-          this.assert(this.gSystemCore.mixerResume());
-          if (realTry) {
-            this.gAudioResumed = true;
-          } else {
-            this.FMOD.mInputRegistered = true;
-          }
-        }
-      };
-
-      const interactionEvents = [
-        "click",
-        "touchstart",
-        "keydown",
-        "mousedown",
-        "mouseup",
-        "touchend",
-        "touchcancel",
-      ];
-      interactionEvents.forEach((event) => {
-        document.addEventListener(event, resumeAudio);
-      });
-
-      this.assert(
-        this.gSystem.setCallback(
-          this.studioCallback.bind(this),
-          this.FMOD.STUDIO_SYSTEM_CALLBACK_BANK_UNLOAD
-        )
-      );
-
-      this._loaded = true;
-      this._initCallbacks.forEach((cb) => cb());
-      this._initCallbacks = [];
-
-      resumeAudio(false);
-
-      return this.FMOD.OK;
+    nextTick(fn) {
+      this.nextTickArray.push(fn);
     }
+
+    update() {
+      if (!this.banks || !this.gSystem || !this.gSystemCore) return;
+
+      // Execute scheduled functions
+      this.nextTickArray.forEach((fn) => fn());
+      this.nextTickArray = [];
+
+      // Update FMOD
+      this.assert(this.gSystem.update());
+    }
+
+    assert(result) {
+      if (result != this.FMOD.OK) {
+        console.error("FMOD error:", this.FMOD.ErrorString(result));
+        throw this.FMOD.ErrorString(result);
+      }
+    }
+
+    async fetchUrlAsInt8Array(url) {
+      try {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        return new Int8Array(buffer);
+      } catch (error) {
+        console.error("Error fetching URL:", error);
+      }
+    }
+
+    awaitBankLoadedState(bank, state) {
+      return new Promise((resolve) => {
+        const outval = {};
+        bank.bankHandle.getLoadingState(outval);
+        if (outval.val === state) {
+          resolve();
+          return;
+        }
+
+        let interval = setInterval(() => {
+          bank.bankHandle.getLoadingState(outval);
+          if (outval.val === state) {
+            clearInterval(interval);
+            resolve();
+          }
+        }, 100);
+      });
+    }
+
+    //====================================================================
+    // Component Initialization Methods
+    //====================================================================
 
     initEvent(event) {
       if (this.events[event]) return true;
+
       const outval = {};
       this.assert(this.gSystem.getEvent(event, outval));
+
       if (outval.val && outval.val.createInstance) {
-        this.events[event] = {};
-        this.events[event].description = outval.val;
-        this.events[event].instance = new Map();
-        this.events[event].allInstances = [];
+        this.events[event] = {
+          description: outval.val,
+          instance: new Map(),
+          allInstances: [],
+        };
         return true;
       }
       return false;
     }
 
-    intiBus(bus) {
+    initBus(bus) {
       if (this.buses[bus]) return true;
+
       const outval = {};
       this.assert(this.gSystem.getBus(bus, outval));
+
       if (outval.val) {
         this.buses[bus] = outval.val;
         return true;
@@ -420,8 +443,10 @@ export default function (parentClass) {
 
     initVCA(vca) {
       if (this.vcas[vca]) return true;
+
       const outval = {};
       this.assert(this.gSystem.getVCA(vca, outval));
+
       if (outval.val) {
         this.vcas[vca] = outval.val;
         return true;
@@ -429,77 +454,80 @@ export default function (parentClass) {
       return false;
     }
 
-    // ===== FMOD ACTION FUNCTIONS
+    //====================================================================
+    // Bank Management Methods
+    //====================================================================
 
     async loadBank(bankOrName) {
       if (typeof bankOrName === "string") {
-        bankOrName = this.banksByName.get(bankOrName);
-        if (!bankOrName) {
-          bankOrName = this.banksByPath.get(bankOrName);
-        }
+        bankOrName =
+          this.banksByName.get(bankOrName) || this.banksByPath.get(bankOrName);
       }
+
       if (!bankOrName) {
         console.error("Bank not found.");
         return;
       }
+
       if (bankOrName.loaded) {
         return bankOrName;
       }
-      let bankhandle = {};
-      let memory = await this.fetchUrlAsInt8Array(bankOrName.url);
-      let errno = this.gSystem.loadBankMemory(
+
+      const bankhandle = {};
+      const memory = await this.fetchUrlAsInt8Array(bankOrName.url);
+      const errno = this.gSystem.loadBankMemory(
         memory,
         memory.length,
         this.FMOD.STUDIO_LOAD_MEMORY,
         this.FMOD.STUDIO_LOAD_BANK_NORMAL,
         bankhandle
       );
+
       if (errno === this.FMOD.ERR_EVENT_ALREADY_LOADED) {
         console.error(
           "Bank already loaded. Make sure you're not loading the same bank twice under different names."
         );
         return bankOrName;
       }
-      /*
-        // This uses the filesystem, but it doesn't work.
-        this.gSystem.loadBankFile(
-          bankOrName.name,
-          this.FMOD.STUDIO_LOAD_BANK_NORMAL,
-          bankhandle
-        )
-      */
+
       this.assert(errno);
       bankOrName.bankHandle = bankhandle.val;
+
       await this.awaitBankLoadedState(
         bankOrName,
         this.FMOD.STUDIO_LOADING_STATE_LOADED
       );
+
       bankOrName.loaded = true;
       return bankOrName;
     }
 
     async unloadBank(bankOrName) {
       if (typeof bankOrName === "string") {
-        bankOrName = this.banksByName.get(bankOrName);
-        if (!bankOrName) {
-          bankOrName = this.banksByPath.get(bankOrName);
-        }
+        bankOrName =
+          this.banksByName.get(bankOrName) || this.banksByPath.get(bankOrName);
       }
+
       if (!bankOrName) {
         console.error("Bank not found.");
         return;
       }
+
       if (!bankOrName.loaded) {
         return bankOrName;
       }
+
       this.assert(this.gSystem.unloadBank(bankOrName.bankHandle));
+
       await this.awaitBankLoadedState(
         bankOrName,
         this.FMOD.STUDIO_LOADING_STATE_UNLOADED
       );
+
       bankOrName.loaded = false;
       return bankOrName;
     }
+
     async unloadAllBanks() {
       await Promise.all(
         this.banks.map(async (bank) => {
@@ -508,10 +536,16 @@ export default function (parentClass) {
       );
     }
 
+    //====================================================================
+    // Event Management Methods
+    //====================================================================
+
     instantiateEvent(event, tags) {
       if (!this.initEvent(event)) return;
+
       const outval = {};
       this.assert(this.events[event].description.createInstance(outval));
+
       const tagArr = tags.split(" ");
       tagArr.forEach((tag) => {
         if (!this.events[event].instance.has(tag)) {
@@ -524,11 +558,13 @@ export default function (parentClass) {
 
     startEvent(event, tag, destroyWhenStopped) {
       if (!this.initEvent(event)) return;
+
       let instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         this.instantiateEvent(event, tag);
         instancesInTag = this.events[event].instance.get(tag);
       }
+
       instancesInTag.forEach((instance) => {
         this.assert(instance.start());
         if (destroyWhenStopped) {
@@ -550,6 +586,7 @@ export default function (parentClass) {
 
     startOneTimeEvent(event) {
       if (!this.initEvent(event)) return;
+
       const outval = {};
       this.assert(this.events[event].description.createInstance(outval));
       this.assert(outval.val.start());
@@ -558,10 +595,12 @@ export default function (parentClass) {
 
     setEventPaused(event, tag, paused) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+
       instancesInTag.forEach((instance) => {
         this.assert(instance.setPaused(!paused));
       });
@@ -569,10 +608,12 @@ export default function (parentClass) {
 
     stopEvent(event, tag, allowFadeOut, release) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+
       instancesInTag.forEach((instance) => {
         this.assert(
           instance.stop(
@@ -596,6 +637,7 @@ export default function (parentClass) {
 
     stopAllEvents(event, allowFadeOut, release) {
       if (!this.initEvent(event)) return;
+
       this.events[event].allInstances.forEach((instance) => {
         this.assert(
           instance.stop(
@@ -617,13 +659,16 @@ export default function (parentClass) {
 
     releaseEvent(event, tag) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+
       instancesInTag.forEach((instance) => {
         this.assert(instance.release());
       });
+
       this.events[event].allInstances = this.events[event].allInstances.filter(
         (instance) => !instancesInTag.includes(instance)
       );
@@ -632,19 +677,27 @@ export default function (parentClass) {
 
     releaseAllEventInstances(event) {
       if (!this.initEvent(event)) return;
+
       this.events[event].allInstances.forEach((instance) => {
         this.assert(instance.release());
       });
+
       this.events[event].instance = new Map();
       this.events[event].allInstances = [];
     }
 
+    //====================================================================
+    // Parameter Methods
+    //====================================================================
+
     setEventParameter(event, tag, parameter, value, ignoreSeekSpeed) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+
       instancesInTag.forEach((instance) => {
         this.assert(
           instance.setParameterByName(parameter, value, ignoreSeekSpeed)
@@ -652,12 +705,32 @@ export default function (parentClass) {
       });
     }
 
-    setEventParameterWithLabel(event, tag, parameter, value, ignoreSeekSpeed) {
+    waitForEventStop(event, tag) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+      return Promise.all(
+        instancesInTag.map((instance) => {
+          new Promise((resolve) => {
+            instance.setCallback(
+              resolve,
+              this.FMOD.STUDIO_EVENT_CALLBACK_STOPPED
+            );
+          });
+        })
+      );
+    }
+
+    setEventParameterWithLabel(event, tag, parameter, value, ignoreSeekSpeed) {
+      if (!this.initEvent(event)) return;
+
+      const instancesInTag = this.events[event].instance.get(tag);
+      if (!instancesInTag || instancesInTag.length === 0) {
+        return;
+      }
+
       instancesInTag.forEach((instance) => {
         this.assert(
           instance.setParameterByNameWithLabel(
@@ -666,6 +739,19 @@ export default function (parentClass) {
             ignoreSeekSpeed
           )
         );
+      });
+    }
+
+    setEventTimelinePosition(event, tag, position) {
+      if (!this.initEvent(event)) return;
+
+      const instancesInTag = this.events[event].instance.get(tag);
+      if (!instancesInTag || instancesInTag.length === 0) {
+        return;
+      }
+
+      instancesInTag.forEach((instance) => {
+        this.assert(instance.setTimelinePosition(position));
       });
     }
 
@@ -687,6 +773,10 @@ export default function (parentClass) {
       );
     }
 
+    //====================================================================
+    // 3D Spatial Audio Methods
+    //====================================================================
+
     setEvent3DAttributes(
       event,
       tag,
@@ -704,31 +794,18 @@ export default function (parentClass) {
       uz
     ) {
       if (!this.initEvent(event)) return;
-      let instancesInTag = this.events[event].instance.get(tag);
+
+      const instancesInTag = this.events[event].instance.get(tag);
       if (!instancesInTag || instancesInTag.length === 0) {
         return;
       }
+
       const attributes = { ...this.FMOD._3D_ATTRIBUTES() };
-      attributes.position = {
-        x,
-        y,
-        z,
-      };
-      attributes.velocity = {
-        x: vx,
-        y: vy,
-        z: vz,
-      };
-      attributes.forward = {
-        x: fx,
-        y: fy,
-        z: fz,
-      };
-      attributes.up = {
-        x: ux,
-        y: uy,
-        z: uz,
-      };
+      attributes.position = { x, y, z };
+      attributes.velocity = { x: vx, y: vy, z: vz };
+      attributes.forward = { x: fx, y: fy, z: fz };
+      attributes.up = { x: ux, y: uy, z: uz };
+
       instancesInTag.forEach((instance) => {
         this.assert(instance.set3DAttributes(attributes));
       });
@@ -754,27 +831,13 @@ export default function (parentClass) {
       az
     ) {
       if (!this.gSystem) return;
+
       const attributes = { ...this.FMOD._3D_ATTRIBUTES() };
-      attributes.position = {
-        x,
-        y,
-        z,
-      };
-      attributes.velocity = {
-        x: vx,
-        y: vy,
-        z: vz,
-      };
-      attributes.forward = {
-        x: fx,
-        y: fy,
-        z: fz,
-      };
-      attributes.up = {
-        x: ux,
-        y: uy,
-        z: uz,
-      };
+      attributes.position = { x, y, z };
+      attributes.velocity = { x: vx, y: vy, z: vz };
+      attributes.forward = { x: fx, y: fy, z: fz };
+      attributes.up = { x: ux, y: uy, z: uz };
+
       if (hasSeparateAttenuationPosition) {
         this.assert(
           this.gSystem.setListenerAttributes(id, attributes, {
@@ -798,14 +861,36 @@ export default function (parentClass) {
       this.assert(this.gSystem.setNumListeners(nb));
     }
 
+    //====================================================================
+    // Mixing Methods
+    //====================================================================
+
     setBusMuted(bus, muted) {
-      if (!this.intiBus(bus)) return;
+      if (!this.initBus(bus)) return;
       this.assert(this.buses[bus].setMute(muted));
     }
+
     setBusVolume(bus, volume) {
-      if (!this.intiBus(bus)) return;
+      if (!this.initBus(bus)) return;
       this.assert(this.buses[bus].setVolume(volume));
     }
+
+    setBusPaused(bus, paused) {
+      if (!this.initBus(bus)) return;
+      this.assert(this.buses[bus].setPaused(paused));
+    }
+
+    stopAllBusEvents(bus, allowFadeOut) {
+      if (!this.initBus(bus)) return;
+      this.assert(
+        this.buses[bus].stopAllEvents(
+          allowFadeOut
+            ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
+            : this.FMOD.STUDIO_STOP_IMMEDIATE
+        )
+      );
+    }
+
     setVCAVolume(vca, volume) {
       if (!this.initVCA(vca)) return;
       this.assert(this.vcas[vca].setVolume(volume));
@@ -814,87 +899,13 @@ export default function (parentClass) {
     setSuspended(suspended, time) {
       if (!this.gSystemCore) return;
       if (time <= this.lastSuspendTime) return;
+
       this.lastSuspendTime = time;
       if (suspended) {
         this.assert(this.gSystemCore.mixerSuspend());
       } else {
         this.assert(this.gSystemCore.mixerResume());
       }
-    }
-
-    update() {
-      if (!this.banks || !this.gSystem || !this.gSystemCore) return;
-      this.nextTickArray.forEach((fn) => fn());
-      this.nextTickArray = [];
-      /*
-      var outval = {};
-      for (let i = 0; i < this.banks.length; i++) {
-        let bank = this.banks[i];
-        if (bank.bank && bank.bank.isValid()) {
-          this.assert(bank.bank.getLoadingState(outval));
-          if (outval && outval.val) {
-            bank.loadState = outval.val;
-          }
-        }
-
-        if (
-          bank.bank &&
-          bank.loadState === this.FMOD.STUDIO_LOADING_STATE_LOADED
-        ) {
-          this.assert(bank.bank.getSampleLoadingState(outval));
-          if (outval && outval.val) {
-            bank.sampleLoadState = outval.val;
-          }
-          if (
-            this.gWantSampleLoad &&
-            bank.sampleLoadState === this.FMOD.STUDIO_LOADING_STATE_UNLOADED
-          ) {
-            this.assert(bank.bank.loadSampleData());
-          } else if (
-            !this.gWantSampleLoad &&
-            (bank.sampleLoadState === this.FMOD.STUDIO_LOADING_STATE_LOADING ||
-              bank.sampleLoadState === this.FMOD.STUDIO_LOADING_STATE_LOADED)
-          ) {
-            this.assert(bank.bank.unloadSampleData());
-          }
-        }
-      }
-
-      var dsp = {};
-      var stream = {};
-      var update = {};
-      var total = {};
-      //this.assert(this.gSystemCore.getCPUUsage(dsp, stream, null, update, total));
-      var channelsplaying = {};
-      this.assert(this.gSystemCore.getChannelsPlaying(channelsplaying, null));
-      var numbuffers = {};
-      var buffersize = {};
-      this.assert(this.gSystemCore.getDSPBufferSize(buffersize, numbuffers));
-      var rate = {};
-      this.assert(this.gSystemCore.getSoftwareFormat(rate, null, null));
-      var sysrate = {};
-      this.assert(
-        this.gSystemCore.getDriverInfo(0, null, null, sysrate, null, null)
-      );
-      var ms = (numbuffers.val * buffersize.val * 1000) / rate.val;
-      communicateWithRuntime({
-        type: "updateStats",
-        stats: {
-          dsp,
-          stream,
-          update,
-          total,
-          channelsplaying,
-          numbuffers,
-          buffersize,
-          rate,
-          sysrate,
-          ms,
-        },
-      });
-      */
-      // Update FMOD
-      this.assert(this.gSystem.update());
     }
   };
 }
