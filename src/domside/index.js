@@ -39,7 +39,7 @@ export default function (parentClass) {
 
     SetUpDOMHandlers() {
       this.AddRuntimeMessageHandlers([
-        ["pre-init", () => this.PreInit()],
+        ["pre-init", (config) => this.PreInit(config)],
         [
           "pre-init-load-bank",
           ([path, preload, nonBlocking, name, url]) =>
@@ -216,7 +216,8 @@ export default function (parentClass) {
       );
     }
 
-    PreInit() {
+    PreInit(config) {
+      this.advancedSettings = config.advancedSettings || {};
       return Promise.all([
         new Promise((resolve) => {
           this._preRunCallbacks.push(() => {
@@ -328,13 +329,18 @@ export default function (parentClass) {
         )
       );
 
+      const defaultAdvancedSettings = {
+        commandqueuesize: 10,
+        handleinitialsize: 0,
+        studioupdateperiod: 20,
+        idlesampledatapoolsize: 0,
+        streamingscheduledelay: 0,
+      };
+
       this.assert(
         this.gSystem.setAdvancedSettings({
-          commandqueuesize: 10,
-          handleinitialsize: 0,
-          studioupdateperiod: 20,
-          idlesampledatapoolsize: 0,
-          streamingscheduledelay: 0,
+          ...defaultAdvancedSettings,
+          ...this.advancedSettings,
         })
       );
 
