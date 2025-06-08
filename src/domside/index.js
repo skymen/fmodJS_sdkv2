@@ -91,9 +91,14 @@ export default function (parentClass) {
             this.stopEvent(name, tag, allowFadeOut, release),
         ],
         [
+          "stop-all-event-instances",
+          ([name, allowFadeOut, release]) =>
+            this.stopAllEventInstances(name, allowFadeOut, release),
+        ],
+        [
           "stop-all-events",
           ([name, allowFadeOut, release]) =>
-            this.stopAllEvents(name, allowFadeOut, release),
+            this.stopAllEvents(allowFadeOut, release),
         ],
         ["release-event", ([name, tag]) => this.releaseEvent(name, tag)],
         [
@@ -641,7 +646,7 @@ export default function (parentClass) {
       }
     }
 
-    stopAllEvents(event, allowFadeOut, release) {
+    stopAllEventInstances(event, allowFadeOut, release) {
       if (!this.initEvent(event)) return;
 
       this.events[event].allInstances.forEach((instance) => {
@@ -661,6 +666,12 @@ export default function (parentClass) {
         this.events[event].instance = new Map();
         this.events[event].allInstances = [];
       }
+    }
+
+    stopAllEvents(allowFadeOut, release) {
+      Object.keys(this.events).forEach((event) => {
+        this.stopAllEventInstances(event, allowFadeOut, release);
+      });
     }
 
     releaseEvent(event, tag) {
