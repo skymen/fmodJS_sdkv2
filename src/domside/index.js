@@ -61,29 +61,42 @@ export default function (parentClass) {
         ],
         [
           "set-event-parameter",
-          ([name, tag, param, value, ignoreSeekSpeed]) =>
-            this.setEventParameter(name, tag, param, value, ignoreSeekSpeed),
+          ([name, tag, param, value, ignoreSeekSpeed, isId = false]) =>
+            this.setEventParameter(
+              name,
+              tag,
+              param,
+              isId,
+              value,
+              ignoreSeekSpeed
+            ),
         ],
         [
           "set-event-parameter-with-label",
-          ([name, tag, param, value, ignoreSeekSpeed]) =>
+          ([name, tag, param, value, ignoreSeekSpeed, isId = false]) =>
             this.setEventParameterWithLabel(
               name,
               tag,
               param,
+              isId,
               value,
               ignoreSeekSpeed
             ),
         ],
         [
           "set-global-parameter",
-          ([param, value, ignoreSeekSpeed]) =>
-            this.setGlobalParameter(param, value, ignoreSeekSpeed),
+          ([param, value, ignoreSeekSpeed, isId = false]) =>
+            this.setGlobalParameter(param, isId, value, ignoreSeekSpeed),
         ],
         [
           "set-global-parameter-with-label",
-          ([param, value, ignoreSeekSpeed]) =>
-            this.setGlobalParameterWithLabel(param, value, ignoreSeekSpeed),
+          ([param, value, ignoreSeekSpeed, isId = false]) =>
+            this.setGlobalParameterWithLabel(
+              param,
+              isId,
+              value,
+              ignoreSeekSpeed
+            ),
         ],
         [
           "stop-event",
@@ -707,7 +720,7 @@ export default function (parentClass) {
     // Parameter Methods
     //====================================================================
 
-    setEventParameter(event, tag, parameter, value, ignoreSeekSpeed) {
+    setEventParameter(event, tag, parameter, isId, value, ignoreSeekSpeed) {
       if (!this.initEvent(event)) return;
 
       const instancesInTag = this.events[event].instance.get(tag);
@@ -717,7 +730,9 @@ export default function (parentClass) {
 
       instancesInTag.forEach((instance) => {
         this.assert(
-          instance.setParameterByName(parameter, value, ignoreSeekSpeed)
+          isId
+            ? instance.setParameterByID(parameter, value, ignoreSeekSpeed)
+            : instance.setParameterByName(parameter, value, ignoreSeekSpeed)
         );
       });
     }
@@ -740,7 +755,14 @@ export default function (parentClass) {
       );
     }
 
-    setEventParameterWithLabel(event, tag, parameter, value, ignoreSeekSpeed) {
+    setEventParameterWithLabel(
+      event,
+      tag,
+      parameter,
+      isId,
+      value,
+      ignoreSeekSpeed
+    ) {
       if (!this.initEvent(event)) return;
 
       const instancesInTag = this.events[event].instance.get(tag);
@@ -750,11 +772,17 @@ export default function (parentClass) {
 
       instancesInTag.forEach((instance) => {
         this.assert(
-          instance.setParameterByNameWithLabel(
-            parameter,
-            value,
-            ignoreSeekSpeed
-          )
+          isId
+            ? instance.setParameterByIDWithLabel(
+                parameter,
+                value,
+                ignoreSeekSpeed
+              )
+            : instance.setParameterByNameWithLabel(
+                parameter,
+                value,
+                ignoreSeekSpeed
+              )
         );
       });
     }
@@ -772,21 +800,29 @@ export default function (parentClass) {
       });
     }
 
-    setGlobalParameter(parameter, value, ignoreSeekSpeed) {
+    setGlobalParameter(parameter, isId, value, ignoreSeekSpeed) {
       if (!this.gSystem) return;
       this.assert(
-        this.gSystem.setParameterByName(parameter, value, ignoreSeekSpeed)
+        isId
+          ? this.gSystem.setParameterByID(parameter, value, ignoreSeekSpeed)
+          : this.gSystem.setParameterByName(parameter, value, ignoreSeekSpeed)
       );
     }
 
-    setGlobalParameterWithLabel(parameter, value, ignoreSeekSpeed) {
+    setGlobalParameterWithLabel(parameter, isId, value, ignoreSeekSpeed) {
       if (!this.gSystem) return;
       this.assert(
-        this.gSystem.setParameterByNameWithLabel(
-          parameter,
-          value,
-          ignoreSeekSpeed
-        )
+        isId
+          ? this.gSystem.setParameterByIDWithLabel(
+              parameter,
+              value,
+              ignoreSeekSpeed
+            )
+          : this.gSystem.setParameterByNameWithLabel(
+              parameter,
+              value,
+              ignoreSeekSpeed
+            )
       );
     }
 
