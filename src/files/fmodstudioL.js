@@ -18,6 +18,11 @@ var FMODModule = (() => {
       typeof process.versions == "object" &&
       typeof process.versions.node == "string";
     if (ENVIRONMENT_IS_NODE) {
+      try {
+        if (__dirname === undefined) ENVIRONMENT_IS_NODE = false;
+      } catch (error) {
+        ENVIRONMENT_IS_NODE = false;
+      }
     }
     var moduleOverrides = Object.assign({}, Module);
     var arguments_ = [];
