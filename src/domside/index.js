@@ -289,22 +289,17 @@ export default function (parentClass) {
       this._preRunCallbacks = [];
     }
 
-    onRuntimeInitialized() {
+    async onRuntimeInitialized() {
       try {
         // Initialize the wrapper with the FMOD global
-        this.initWrapper();
+        await this.initWrapper();
 
         // Set up iOS/Chrome workaround for audio context
         const resumeAudio = (realTry = true) => {
           if (!this.gAudioResumed) {
             try {
-              if (this._fullyInitialized) {
-                this.FMOD["OutputAudioWorklet_resumeAudio"]();
-              }
-
               if (this._fullyInitialized && this.wrapper) {
-                this.wrapper.setSuspended(true);
-                this.wrapper.setSuspended(false);
+                this.wrapper.resumeAudio();
               }
               if (realTry) {
                 this.gAudioResumed = true;
@@ -355,63 +350,17 @@ export default function (parentClass) {
       }
     }
 
-    initWrapper() {
-      // Create wrapper and manually set its references to the already-initialized FMOD
+    async initWrapper() {
+      // Create wrapper instance
       this.wrapper = new FMODWrapper(this.FMOD);
 
-      const outval = {};
-
-      // Create Studio System
-      const createResult = this.FMOD.Studio_System_Create(outval);
-      this.assert(createResult);
-      this.wrapper.system = outval.val;
-
-      // Get Core System
-      const coreResult = this.wrapper.system.getCoreSystem(outval);
-      this.assert(coreResult);
-      this.wrapper.coreSystem = outval.val;
-
-      // Configure DSP buffer
-      this.assert(this.wrapper.coreSystem.setDSPBufferSize(512, 2));
-
-      // Set software format
-      this.assert(
-        this.wrapper.coreSystem.getDriverInfo(0, null, null, outval, null, null)
-      );
-      this.assert(
-        this.wrapper.coreSystem.setSoftwareFormat(
-          outval.val,
-          this.FMOD.SPEAKERMODE_DEFAULT,
-          0
-        )
-      );
-
-      // Apply advanced settings
-      const defaultAdvancedSettings = {
-        commandqueuesize: 10,
-        handleinitialsize: 0,
-        studioupdateperiod: 20,
-        idlesampledatapoolsize: 0,
-        streamingscheduledelay: 0,
-      };
-      this.assert(
-        this.wrapper.system.setAdvancedSettings({
-          ...defaultAdvancedSettings,
-          ...this.advancedSettings,
-        })
-      );
-
-      // Initialize
-      this.assert(
-        this.wrapper.system.initialize(
-          1024,
-          this.FMOD.STUDIO_INIT_NORMAL,
-          this.FMOD.INIT_NORMAL,
-          null
-        )
-      );
-
-      this.wrapper.initialized = true;
+      // Let the wrapper initialize FMOD with custom options
+      await this.wrapper.initialize({
+        maxChannels: 1024,
+        dspBufferSize: 512,
+        numBuffers: 2,
+        advancedSettings: this.advancedSettings,
+      });
     }
 
     //====================================================================

@@ -46,15 +46,17 @@ export default class FMODWrapper {
    * Initialize the FMOD system
    * @param {Object} options - Configuration options
    * @param {number} options.maxChannels - Maximum virtual channels (default: 1024)
-   * @param {number} options.dspBufferSize - DSP buffer size (default: 2048)
+   * @param {number} options.dspBufferSize - DSP buffer size (default: 512)
    * @param {number} options.numBuffers - Number of buffers (default: 2)
+   * @param {Object} options.advancedSettings - Advanced FMOD settings
    * @returns {Promise} Resolves when FMOD is initialized
    */
   initialize(options = {}) {
     const {
       maxChannels = 1024,
-      dspBufferSize = 2048,
+      dspBufferSize = 512,
       numBuffers = 2,
+      advancedSettings = {},
     } = options;
 
     return new Promise((resolve, reject) => {
@@ -103,6 +105,39 @@ export default class FMODWrapper {
       if (result !== FMOD.OK) {
         console.warn(
           `Failed to set DSP buffer size: ${FMOD.ErrorString(result)}`
+        );
+      }
+
+      // Set software format based on driver info
+      result = this.coreSystem.getDriverInfo(0, null, null, outval, null, null);
+      if (result === FMOD.OK) {
+        result = this.coreSystem.setSoftwareFormat(
+          outval.val,
+          FMOD.SPEAKERMODE_DEFAULT,
+          0
+        );
+        if (result !== FMOD.OK) {
+          console.warn(
+            `Failed to set software format: ${FMOD.ErrorString(result)}`
+          );
+        }
+      }
+
+      // Apply advanced settings
+      const defaultAdvancedSettings = {
+        commandqueuesize: 10,
+        handleinitialsize: 0,
+        studioupdateperiod: 20,
+        idlesampledatapoolsize: 0,
+        streamingscheduledelay: 0,
+      };
+      result = this.system.setAdvancedSettings({
+        ...defaultAdvancedSettings,
+        ...advancedSettings,
+      });
+      if (result !== FMOD.OK) {
+        console.warn(
+          `Failed to set advanced settings: ${FMOD.ErrorString(result)}`
         );
       }
 
@@ -1030,6 +1065,27 @@ export default class FMODWrapper {
       console.warn(
         `Failed to set suspended state: ${FMOD.ErrorString(result)}`
       );
+    }
+  }
+
+  /**
+   * Resume audio (for iOS/Chrome workaround)
+   * Handles OutputAudioWorklet resumption and mixer suspend/resume
+   */
+  resumeAudio() {
+    if (!this.initialized || !this.coreSystem) return;
+
+    try {
+      // Call OutputAudioWorklet_resumeAudio if available
+      if (typeof FMOD["OutputAudioWorklet_resumeAudio"] === "function") {
+        FMOD["OutputAudioWorklet_resumeAudio"]();
+      }
+
+      // Suspend and resume mixer to kick the audio context
+      this.coreSystem.mixerSuspend();
+      this.coreSystem.mixerResume();
+    } catch (error) {
+      console.warn("Failed to resume audio:", error);
     }
   }
 
