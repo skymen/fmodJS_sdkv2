@@ -1089,6 +1089,48 @@ export default class FMODWrapper {
     }
   }
 
+  /**
+   * Set up audio resume handlers for iOS/Chrome workaround
+   * Sets up event listeners that resume audio on user interaction
+   */
+  setupAudioResumeHandlers() {
+    let audioResumed = false;
+    // Listen to various user interaction events
+    const interactionEvents = [
+      "click",
+      "touchstart",
+      "keydown",
+      "mousedown",
+      "mouseup",
+      "touchend",
+      "touchcancel",
+    ];
+
+    const resumeOnInteraction = (real = true) => {
+      if (!audioResumed && this.initialized) {
+        this.resumeAudio();
+        if (real) {
+          audioResumed = true;
+          // Mark FMOD as having received input
+          if (FMOD) {
+            FMOD.mInputRegistered = true;
+          }
+          // Remove all listeners after first real interaction
+          interactionEvents.forEach((eventType) => {
+            document.removeEventListener(eventType, resumeOnInteraction);
+          });
+        }
+      }
+    };
+
+    interactionEvents.forEach((eventType) => {
+      document.addEventListener(eventType, resumeOnInteraction, { once: true });
+    });
+
+    // Attempt initial resume
+    resumeOnInteraction(false);
+  }
+
   // ==================== Utility Methods ====================
 
   /**

@@ -29,7 +29,6 @@ export default function (parentClass) {
       this._preRunCallbacks = [];
       this._initCallbacks = [];
       this._loaded = false;
-      this._fullyInitialized = false;
 
       // Error tracking for stability
       this._errorCount = 0;
@@ -294,51 +293,12 @@ export default function (parentClass) {
         // Initialize the wrapper with the FMOD global
         await this.initWrapper();
 
-        // Set up iOS/Chrome workaround for audio context
-        const resumeAudio = (realTry = true) => {
-          if (!this.gAudioResumed) {
-            try {
-              if (this._fullyInitialized && this.wrapper) {
-                this.wrapper.resumeAudio();
-              }
-              if (realTry) {
-                this.gAudioResumed = true;
-              } else {
-                this.FMOD.mInputRegistered = true;
-              }
-            } catch (error) {
-              console.error(
-                "FMOD [resumeAudio]: Failed to resume audio context:",
-                error
-              );
-            }
-          }
-        };
-
-        const interactionEvents = [
-          "click",
-          "touchstart",
-          "keydown",
-          "mousedown",
-          "mouseup",
-          "touchend",
-          "touchcancel",
-        ];
-        interactionEvents.forEach((event) => {
-          document.addEventListener(event, () => {
-            resumeAudio(true);
-          });
-        });
+        // Set up audio resume handlers (iOS/Chrome workaround)
+        this.wrapper.setupAudioResumeHandlers();
 
         this._loaded = true;
         this._initCallbacks.forEach((cb) => cb());
         this._initCallbacks = [];
-
-        // Give FMOD a moment to fully initialize
-        setTimeout(() => {
-          this._fullyInitialized = true;
-          resumeAudio(false);
-        }, 100);
 
         return this.FMOD.OK;
       } catch (error) {
@@ -373,10 +333,6 @@ export default function (parentClass) {
 
     update() {
       if (!this.wrapper || !this._loaded) {
-        return;
-      }
-
-      if (!this._fullyInitialized) {
         return;
       }
 
