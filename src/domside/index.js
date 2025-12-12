@@ -457,7 +457,10 @@ export default function (parentClass) {
       if (result != this.FMOD.OK) {
         const errorMsg = this.FMOD.ErrorString(result);
         console.error("FMOD [assert]: Error code", result, ":", errorMsg);
-        throw new Error(errorMsg);
+        const error = new Error(errorMsg);
+        error.fmodErrorCode = result;
+        error.fmodErrorString = errorMsg;
+        throw error;
       }
     }
 
@@ -474,6 +477,11 @@ export default function (parentClass) {
         return false;
       }
       return true;
+    }
+
+    // Helper to format error messages consistently
+    _formatError(error) {
+      return error.fmodErrorString || error.message || String(error);
     }
 
     async fetchUrlAsInt8Array(url) {
@@ -718,7 +726,7 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [startOneTimeEvent]: Failed for event="${event}"`,
-          error
+          `Error: ${this._formatError(error)}`
         );
       }
     }
@@ -1089,6 +1097,7 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [setListener3DAttributes]: Failed for listener id=${id}`,
+          `FMOD Error: ${this._formatError(error)}`,
           error
         );
       }
@@ -1101,6 +1110,7 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [setListenerWeight]: Failed for listener id=${id}, weight=${weight}`,
+          `FMOD Error: ${this._formatError(error)}`,
           error
         );
       }
@@ -1111,7 +1121,11 @@ export default function (parentClass) {
       try {
         this.assert(this.gSystem.setNumListeners(nb));
       } catch (error) {
-        console.error(`FMOD [setNbListeners]: Failed for nb=${nb}`, error);
+        console.error(
+          `FMOD [setNbListeners]: Failed for nb=${nb}`,
+          `FMOD Error: ${this._formatError(error)}`,
+          error
+        );
       }
     }
 
