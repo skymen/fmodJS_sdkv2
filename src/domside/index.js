@@ -18,6 +18,11 @@ export default function (parentClass) {
       this._preRunCallbacks = [];
       this._initCallbacks = [];
 
+      // Error tracking for stability
+      this._errorCount = 0;
+      this._lastErrorTime = 0;
+      this._errorResetInterval = 60000; // Reset error count every 60 seconds
+
       // Audio resources tracking
       this.banks = [];
       this.events = {};
@@ -268,52 +273,67 @@ export default function (parentClass) {
     }
 
     onRuntimeInitialized() {
-      // Initialize the system
-      this.initSystem();
+      try {
+        // Initialize the system
+        this.initSystem();
 
-      // Set up iOS/Chrome workaround. Webaudio is not allowed to start unless screen is touched or button is clicked.
-      const resumeAudio = (realTry = true) => {
-        if (!this.gAudioResumed) {
-          this.FMOD["OutputAudioWorklet_resumeAudio"]();
-          this.assert(this.gSystemCore.mixerSuspend());
-          this.assert(this.gSystemCore.mixerResume());
-          if (realTry) {
-            this.gAudioResumed = true;
-          } else {
-            this.FMOD.mInputRegistered = true;
+        // Set up iOS/Chrome workaround. Webaudio is not allowed to start unless screen is touched or button is clicked.
+        const resumeAudio = (realTry = true) => {
+          if (!this.gAudioResumed) {
+            try {
+              this.FMOD["OutputAudioWorklet_resumeAudio"]();
+              this.assert(this.gSystemCore.mixerSuspend());
+              this.assert(this.gSystemCore.mixerResume());
+              if (realTry) {
+                this.gAudioResumed = true;
+              } else {
+                this.FMOD.mInputRegistered = true;
+              }
+            } catch (error) {
+              console.error(
+                "FMOD [resumeAudio]: Failed to resume audio context:",
+                error
+              );
+            }
           }
-        }
-      };
+        };
 
-      const interactionEvents = [
-        "click",
-        "touchstart",
-        "keydown",
-        "mousedown",
-        "mouseup",
-        "touchend",
-        "touchcancel",
-      ];
-      interactionEvents.forEach((event) => {
-        document.addEventListener(event, (event) => {
-          resumeAudio(true);
+        const interactionEvents = [
+          "click",
+          "touchstart",
+          "keydown",
+          "mousedown",
+          "mouseup",
+          "touchend",
+          "touchcancel",
+        ];
+        interactionEvents.forEach((event) => {
+          document.addEventListener(event, (event) => {
+            resumeAudio(true);
+          });
         });
-      });
 
-      this.assert(
-        this.gSystem.setCallback(
-          this.studioCallback.bind(this),
-          this.FMOD.STUDIO_SYSTEM_CALLBACK_BANK_UNLOAD
-        )
-      );
+        this.assert(
+          this.gSystem.setCallback(
+            this.studioCallback.bind(this),
+            this.FMOD.STUDIO_SYSTEM_CALLBACK_BANK_UNLOAD
+          )
+        );
 
-      this._loaded = true;
-      this._initCallbacks.forEach((cb) => cb());
-      this._initCallbacks = [];
+        this._loaded = true;
+        this._initCallbacks.forEach((cb) => cb());
+        this._initCallbacks = [];
 
-      resumeAudio(false);
+        resumeAudio(false);
 
-      return this.FMOD.OK;
+        return this.FMOD.OK;
+      } catch (error) {
+        console.error(
+          "FMOD [onRuntimeInitialized]: Critical error during runtime initialization:",
+          error
+        );
+        throw error;
+      }
     }
 
     studioCallback(system, type, commanddata, userdata) {
@@ -383,19 +403,77 @@ export default function (parentClass) {
     update() {
       if (!this.banks || !this.gSystem || !this.gSystemCore) return;
 
-      // Execute scheduled functions
-      this.nextTickArray.forEach((fn) => fn());
-      this.nextTickArray = [];
+      try {
+        // Execute scheduled functions
+        this.nextTickArray.forEach((fn) => {
+          try {
+            fn();
+          } catch (error) {
+            console.error("FMOD [update]: Error in scheduled function:", error);
+            this._trackError();
+          }
+        });
+        this.nextTickArray = [];
 
-      // Update FMOD
-      this.assert(this.gSystem.update());
+        // Update FMOD
+        const result = this.gSystem.update();
+        if (result !== this.FMOD.OK) {
+          console.error(
+            "FMOD [update]: System update failed:",
+            this.FMOD.ErrorString(result)
+          );
+          this._trackError();
+        }
+      } catch (error) {
+        console.error("FMOD [update]: Critical error in update cycle:", error);
+        this._trackError();
+        // Don't rethrow - allow the next update cycle to try again
+      }
+    }
+
+    // Track errors to detect cascading failures
+    _trackError() {
+      const now = Date.now();
+
+      // Reset error count if enough time has passed
+      if (now - this._lastErrorTime > this._errorResetInterval) {
+        this._errorCount = 0;
+      }
+
+      this._errorCount++;
+      this._lastErrorTime = now;
+
+      // If too many errors in a short time, warn the user
+      if (this._errorCount > 10) {
+        console.warn(
+          `FMOD: Detected ${this._errorCount} errors in ${
+            (now - (this._lastErrorTime - this._errorResetInterval)) / 1000
+          }s. Audio system may be unstable.`
+        );
+      }
     }
 
     assert(result) {
       if (result != this.FMOD.OK) {
-        console.error("FMOD error:", this.FMOD.ErrorString(result));
-        throw this.FMOD.ErrorString(result);
+        const errorMsg = this.FMOD.ErrorString(result);
+        console.error("FMOD [assert]: Error code", result, ":", errorMsg);
+        throw new Error(errorMsg);
       }
+    }
+
+    // Non-throwing version for recoverable errors
+    check(result, context = "") {
+      if (result != this.FMOD.OK) {
+        const errorMsg = this.FMOD.ErrorString(result);
+        console.error(
+          `FMOD [check]${context ? ` (${context})` : ""}: Error code`,
+          result,
+          ":",
+          errorMsg
+        );
+        return false;
+      }
+      return true;
     }
 
     async fetchUrlAsInt8Array(url) {
@@ -567,54 +645,82 @@ export default function (parentClass) {
     instantiateEvent(event, tags) {
       if (!this.initEvent(event)) return;
 
-      const outval = {};
-      this.assert(this.events[event].description.createInstance(outval));
+      try {
+        const outval = {};
+        this.assert(this.events[event].description.createInstance(outval));
 
-      const tagArr = tags.split(" ");
-      tagArr.forEach((tag) => {
-        if (!this.events[event].instance.has(tag)) {
-          this.events[event].instance.set(tag, []);
-        }
-        this.events[event].instance.get(tag).push(outval.val);
-        this.events[event].allInstances.push(outval.val);
-      });
+        const tagArr = tags.split(" ");
+        tagArr.forEach((tag) => {
+          if (!this.events[event].instance.has(tag)) {
+            this.events[event].instance.set(tag, []);
+          }
+          this.events[event].instance.get(tag).push(outval.val);
+          this.events[event].allInstances.push(outval.val);
+        });
+      } catch (error) {
+        console.error(
+          `FMOD [instantiateEvent]: Failed for event="${event}", tags="${tags}"`,
+          error
+        );
+      }
     }
 
     startEvent(event, tag, destroyWhenStopped) {
       if (!this.initEvent(event)) return;
 
-      let instancesInTag = this.events[event].instance.get(tag);
-      if (!instancesInTag || instancesInTag.length === 0) {
-        this.instantiateEvent(event, tag);
-        instancesInTag = this.events[event].instance.get(tag);
-      }
-
-      instancesInTag.forEach((instance) => {
-        this.assert(instance.start());
-        if (destroyWhenStopped) {
-          this.assert(instance.release());
+      try {
+        let instancesInTag = this.events[event].instance.get(tag);
+        if (!instancesInTag || instancesInTag.length === 0) {
+          this.instantiateEvent(event, tag);
+          instancesInTag = this.events[event].instance.get(tag);
         }
-      });
 
-      if (destroyWhenStopped) {
-        this.nextTick(() => {
-          this.events[event].allInstances = this.events[
-            event
-          ].allInstances.filter(
-            (instance) => !instancesInTag.includes(instance)
-          );
-          this.events[event].instance.set(tag, []);
+        instancesInTag.forEach((instance) => {
+          try {
+            this.assert(instance.start());
+            if (destroyWhenStopped) {
+              this.assert(instance.release());
+            }
+          } catch (error) {
+            console.error(
+              `FMOD [startEvent]: Failed to start instance for event="${event}", tag="${tag}"`,
+              error
+            );
+          }
         });
+
+        if (destroyWhenStopped) {
+          this.nextTick(() => {
+            this.events[event].allInstances = this.events[
+              event
+            ].allInstances.filter(
+              (instance) => !instancesInTag.includes(instance)
+            );
+            this.events[event].instance.set(tag, []);
+          });
+        }
+      } catch (error) {
+        console.error(
+          `FMOD [startEvent]: Failed for event="${event}", tag="${tag}"`,
+          error
+        );
       }
     }
 
     startOneTimeEvent(event) {
       if (!this.initEvent(event)) return;
 
-      const outval = {};
-      this.assert(this.events[event].description.createInstance(outval));
-      this.assert(outval.val.start());
-      this.assert(outval.val.release());
+      try {
+        const outval = {};
+        this.assert(this.events[event].description.createInstance(outval));
+        this.assert(outval.val.start());
+        this.assert(outval.val.release());
+      } catch (error) {
+        console.error(
+          `FMOD [startOneTimeEvent]: Failed for event="${event}"`,
+          error
+        );
+      }
     }
 
     setEventPaused(event, tag, paused) {
@@ -626,7 +732,14 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(instance.setPaused(!paused));
+        try {
+          this.assert(instance.setPaused(!paused));
+        } catch (error) {
+          console.error(
+            `FMOD [setEventPaused]: Failed for event="${event}", tag="${tag}", paused=${paused}`,
+            error
+          );
+        }
       });
     }
 
@@ -639,15 +752,22 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(
-          instance.stop(
-            allowFadeOut
-              ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
-              : this.FMOD.STUDIO_STOP_IMMEDIATE
-          )
-        );
-        if (release) {
-          this.assert(instance.release());
+        try {
+          this.assert(
+            instance.stop(
+              allowFadeOut
+                ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
+                : this.FMOD.STUDIO_STOP_IMMEDIATE
+            )
+          );
+          if (release) {
+            this.assert(instance.release());
+          }
+        } catch (error) {
+          console.error(
+            `FMOD [stopEvent]: Failed to stop instance for event="${event}", tag="${tag}"`,
+            error
+          );
         }
       });
 
@@ -663,15 +783,22 @@ export default function (parentClass) {
       if (!this.initEvent(event)) return;
 
       this.events[event].allInstances.forEach((instance) => {
-        this.assert(
-          instance.stop(
-            allowFadeOut
-              ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
-              : this.FMOD.STUDIO_STOP_IMMEDIATE
-          )
-        );
-        if (release) {
-          this.assert(instance.release());
+        try {
+          this.assert(
+            instance.stop(
+              allowFadeOut
+                ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
+                : this.FMOD.STUDIO_STOP_IMMEDIATE
+            )
+          );
+          if (release) {
+            this.assert(instance.release());
+          }
+        } catch (error) {
+          console.error(
+            `FMOD [stopAllEventInstances]: Failed to stop instance for event="${event}"`,
+            error
+          );
         }
       });
 
@@ -696,7 +823,14 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(instance.release());
+        try {
+          this.assert(instance.release());
+        } catch (error) {
+          console.error(
+            `FMOD [releaseEvent]: Failed to release instance for event="${event}", tag="${tag}"`,
+            error
+          );
+        }
       });
 
       this.events[event].allInstances = this.events[event].allInstances.filter(
@@ -709,7 +843,14 @@ export default function (parentClass) {
       if (!this.initEvent(event)) return;
 
       this.events[event].allInstances.forEach((instance) => {
-        this.assert(instance.release());
+        try {
+          this.assert(instance.release());
+        } catch (error) {
+          console.error(
+            `FMOD [releaseAllEventInstances]: Failed to release instance for event="${event}"`,
+            error
+          );
+        }
       });
 
       this.events[event].instance = new Map();
@@ -729,11 +870,18 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(
-          isId
-            ? instance.setParameterByID(parameter, value, ignoreSeekSpeed)
-            : instance.setParameterByName(parameter, value, ignoreSeekSpeed)
-        );
+        try {
+          this.assert(
+            isId
+              ? instance.setParameterByID(parameter, value, ignoreSeekSpeed)
+              : instance.setParameterByName(parameter, value, ignoreSeekSpeed)
+          );
+        } catch (error) {
+          console.error(
+            `FMOD [setEventParameter]: Failed for event="${event}", tag="${tag}", parameter="${parameter}", value=${value}`,
+            error
+          );
+        }
       });
     }
 
@@ -771,19 +919,26 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(
-          isId
-            ? instance.setParameterByIDWithLabel(
-                parameter,
-                value,
-                ignoreSeekSpeed
-              )
-            : instance.setParameterByNameWithLabel(
-                parameter,
-                value,
-                ignoreSeekSpeed
-              )
-        );
+        try {
+          this.assert(
+            isId
+              ? instance.setParameterByIDWithLabel(
+                  parameter,
+                  value,
+                  ignoreSeekSpeed
+                )
+              : instance.setParameterByNameWithLabel(
+                  parameter,
+                  value,
+                  ignoreSeekSpeed
+                )
+          );
+        } catch (error) {
+          console.error(
+            `FMOD [setEventParameterWithLabel]: Failed for event="${event}", tag="${tag}", parameter="${parameter}", value="${value}"`,
+            error
+          );
+        }
       });
     }
 
@@ -796,34 +951,55 @@ export default function (parentClass) {
       }
 
       instancesInTag.forEach((instance) => {
-        this.assert(instance.setTimelinePosition(position));
+        try {
+          this.assert(instance.setTimelinePosition(position));
+        } catch (error) {
+          console.error(
+            `FMOD [setEventTimelinePosition]: Failed for event="${event}", tag="${tag}", position=${position}`,
+            error
+          );
+        }
       });
     }
 
     setGlobalParameter(parameter, isId, value, ignoreSeekSpeed) {
       if (!this.gSystem) return;
-      this.assert(
-        isId
-          ? this.gSystem.setParameterByID(parameter, value, ignoreSeekSpeed)
-          : this.gSystem.setParameterByName(parameter, value, ignoreSeekSpeed)
-      );
+      try {
+        this.assert(
+          isId
+            ? this.gSystem.setParameterByID(parameter, value, ignoreSeekSpeed)
+            : this.gSystem.setParameterByName(parameter, value, ignoreSeekSpeed)
+        );
+      } catch (error) {
+        console.error(
+          `FMOD [setGlobalParameter]: Failed for parameter="${parameter}", value=${value}`,
+          error
+        );
+      }
     }
 
     setGlobalParameterWithLabel(parameter, isId, value, ignoreSeekSpeed) {
       if (!this.gSystem) return;
-      this.assert(
-        isId
-          ? this.gSystem.setParameterByIDWithLabel(
-              parameter,
-              value,
-              ignoreSeekSpeed
-            )
-          : this.gSystem.setParameterByNameWithLabel(
-              parameter,
-              value,
-              ignoreSeekSpeed
-            )
-      );
+      try {
+        this.assert(
+          isId
+            ? this.gSystem.setParameterByIDWithLabel(
+                parameter,
+                value,
+                ignoreSeekSpeed
+              )
+            : this.gSystem.setParameterByNameWithLabel(
+                parameter,
+                value,
+                ignoreSeekSpeed
+              )
+        );
+      } catch (error) {
+        console.error(
+          `FMOD [setGlobalParameterWithLabel]: Failed for parameter="${parameter}", value="${value}"`,
+          error
+        );
+      }
     }
 
     //====================================================================
@@ -860,7 +1036,14 @@ export default function (parentClass) {
       attributes.up = { x: ux, y: uy, z: uz };
 
       instancesInTag.forEach((instance) => {
-        this.assert(instance.set3DAttributes(attributes));
+        try {
+          this.assert(instance.set3DAttributes(attributes));
+        } catch (error) {
+          console.error(
+            `FMOD [setEvent3DAttributes]: Failed for event="${event}", tag="${tag}"`,
+            error
+          );
+        }
       });
     }
 
@@ -891,27 +1074,45 @@ export default function (parentClass) {
       attributes.forward = { x: fx, y: fy, z: fz };
       attributes.up = { x: ux, y: uy, z: uz };
 
-      if (hasSeparateAttenuationPosition) {
-        this.assert(
-          this.gSystem.setListenerAttributes(id, attributes, {
-            x: ax,
-            y: ay,
-            z: az,
-          })
+      try {
+        if (hasSeparateAttenuationPosition) {
+          this.assert(
+            this.gSystem.setListenerAttributes(id, attributes, {
+              x: ax,
+              y: ay,
+              z: az,
+            })
+          );
+        } else {
+          this.assert(this.gSystem.setListenerAttributes(id, attributes, null));
+        }
+      } catch (error) {
+        console.error(
+          `FMOD [setListener3DAttributes]: Failed for listener id=${id}`,
+          error
         );
-      } else {
-        this.assert(this.gSystem.setListenerAttributes(id, attributes, null));
       }
     }
 
     setListenerWeight(id, weight) {
       if (!this.gSystem) return;
-      this.assert(this.gSystem.setListenerWeight(id, weight));
+      try {
+        this.assert(this.gSystem.setListenerWeight(id, weight));
+      } catch (error) {
+        console.error(
+          `FMOD [setListenerWeight]: Failed for listener id=${id}, weight=${weight}`,
+          error
+        );
+      }
     }
 
     setNbListeners(nb) {
       if (!this.gSystem) return;
-      this.assert(this.gSystem.setNumListeners(nb));
+      try {
+        this.assert(this.gSystem.setNumListeners(nb));
+      } catch (error) {
+        console.error(`FMOD [setNbListeners]: Failed for nb=${nb}`, error);
+      }
     }
 
     //====================================================================
@@ -920,33 +1121,68 @@ export default function (parentClass) {
 
     setBusMuted(bus, muted) {
       if (!this.initBus(bus)) return;
-      this.assert(this.buses[bus].setMute(muted));
+      try {
+        this.assert(this.buses[bus].setMute(muted));
+      } catch (error) {
+        console.error(
+          `FMOD [setBusMuted]: Failed for bus="${bus}", muted=${muted}`,
+          error
+        );
+      }
     }
 
     setBusVolume(bus, volume) {
       if (!this.initBus(bus)) return;
-      this.assert(this.buses[bus].setVolume(volume));
+      try {
+        this.assert(this.buses[bus].setVolume(volume));
+      } catch (error) {
+        console.error(
+          `FMOD [setBusVolume]: Failed for bus="${bus}", volume=${volume}`,
+          error
+        );
+      }
     }
 
     setBusPaused(bus, paused) {
       if (!this.initBus(bus)) return;
-      this.assert(this.buses[bus].setPaused(paused));
+      try {
+        this.assert(this.buses[bus].setPaused(paused));
+      } catch (error) {
+        console.error(
+          `FMOD [setBusPaused]: Failed for bus="${bus}", paused=${paused}`,
+          error
+        );
+      }
     }
 
     stopAllBusEvents(bus, allowFadeOut) {
       if (!this.initBus(bus)) return;
-      this.assert(
-        this.buses[bus].stopAllEvents(
-          allowFadeOut
-            ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
-            : this.FMOD.STUDIO_STOP_IMMEDIATE
-        )
-      );
+      try {
+        this.assert(
+          this.buses[bus].stopAllEvents(
+            allowFadeOut
+              ? this.FMOD.STUDIO_STOP_ALLOWFADEOUT
+              : this.FMOD.STUDIO_STOP_IMMEDIATE
+          )
+        );
+      } catch (error) {
+        console.error(
+          `FMOD [stopAllBusEvents]: Failed for bus="${bus}"`,
+          error
+        );
+      }
     }
 
     setVCAVolume(vca, volume) {
       if (!this.initVCA(vca)) return;
-      this.assert(this.vcas[vca].setVolume(volume));
+      try {
+        this.assert(this.vcas[vca].setVolume(volume));
+      } catch (error) {
+        console.error(
+          `FMOD [setVCAVolume]: Failed for vca="${vca}", volume=${volume}`,
+          error
+        );
+      }
     }
 
     setSuspended(suspended, time) {
@@ -954,10 +1190,17 @@ export default function (parentClass) {
       if (time <= this.lastSuspendTime) return;
 
       this.lastSuspendTime = time;
-      if (suspended) {
-        this.assert(this.gSystemCore.mixerSuspend());
-      } else {
-        this.assert(this.gSystemCore.mixerResume());
+      try {
+        if (suspended) {
+          this.assert(this.gSystemCore.mixerSuspend());
+        } else {
+          this.assert(this.gSystemCore.mixerResume());
+        }
+      } catch (error) {
+        console.error(
+          `FMOD [setSuspended]: Failed for suspended=${suspended}`,
+          error
+        );
       }
     }
   };
