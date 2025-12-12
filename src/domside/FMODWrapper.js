@@ -186,10 +186,24 @@ export default class FMODWrapper {
         continue;
       }
 
+      // Check if instance handle is still valid before accessing it
+      if (!data.instance) {
+        toRemove.push(id);
+        continue;
+      }
+
       // Check playback state
       const stateOut = {};
       const result = data.instance.getPlaybackState(stateOut);
-      if (result === FMOD.OK && stateOut.val === FMOD.STUDIO_PLAYBACK_STOPPED) {
+
+      // If we get an error, the instance may have been released externally
+      if (result !== FMOD.OK) {
+        data.released = true;
+        toRemove.push(id);
+        continue;
+      }
+
+      if (stateOut.val === FMOD.STUDIO_PLAYBACK_STOPPED) {
         if (data.autoRelease) {
           data.instance.release();
           data.released = true;

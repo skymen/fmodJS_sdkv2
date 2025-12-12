@@ -61,12 +61,14 @@ export default function (parentClass) {
     SetUpDOMHandlers() {
       this.AddRuntimeMessageHandlers([
         ["pre-init", (config) => this.PreInit(config)],
+
         [
           "pre-init-load-bank",
           ([path, preload, nonBlocking, name, url]) =>
             this.PreInitLoadBank(path, preload, nonBlocking, name, url),
         ],
         ["start-one-time-event", ([event]) => this.startOneTimeEvent(event)],
+
         ["update", () => this.update()],
         ["load-bank", ([name]) => this.loadBank(name)],
         ["unload-bank", ([name]) => this.unloadBank(name)],
