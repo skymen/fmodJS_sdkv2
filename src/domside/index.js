@@ -23,6 +23,10 @@ export default function (parentClass) {
       this._lastErrorTime = 0;
       this._errorResetInterval = 60000; // Reset error count every 60 seconds
 
+      // Listener tracking
+      this._numListeners = 1; // Default number of listeners
+      this._listenersInitialized = false;
+
       // Audio resources tracking
       this.banks = [];
       this.events = {};
@@ -1037,6 +1041,17 @@ export default function (parentClass) {
         return;
       }
 
+      // Validate input values to prevent NaN/Infinity
+      const values = [x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz];
+      for (const val of values) {
+        if (!isFinite(val)) {
+          console.error(
+            `FMOD [setEvent3DAttributes]: Invalid value detected (NaN or Infinity) for event="${event}", tag="${tag}"`
+          );
+          return;
+        }
+      }
+
       const attributes = { ...this.FMOD._3D_ATTRIBUTES() };
       attributes.position = { x, y, z };
       attributes.velocity = { x: vx, y: vy, z: vz };
@@ -1049,6 +1064,8 @@ export default function (parentClass) {
         } catch (error) {
           console.error(
             `FMOD [setEvent3DAttributes]: Failed for event="${event}", tag="${tag}"`,
+            `Position: (${x}, ${y}, ${z})`,
+            `FMOD Error: ${this._formatError(error)}`,
             error
           );
         }
@@ -1074,15 +1091,45 @@ export default function (parentClass) {
       ay,
       az
     ) {
-      if (!this.gSystem) return;
+      if (!this.gSystem || !this._loaded) {
+        console.warn(
+          `FMOD [setListener3DAttributes]: System not ready, skipping for listener id=${id}`
+        );
+        return;
+      }
 
-      const attributes = { ...this.FMOD._3D_ATTRIBUTES() };
-      attributes.position = { x, y, z };
-      attributes.velocity = { x: vx, y: vy, z: vz };
-      attributes.forward = { x: fx, y: fy, z: fz };
-      attributes.up = { x: ux, y: uy, z: uz };
+      // Check if listener ID is valid
+      if (id < 0 || id >= this._numListeners) {
+        console.error(
+          `FMOD [setListener3DAttributes]: Invalid listener id=${id}. ` +
+            `Valid range is 0 to ${this._numListeners - 1}. ` +
+            `Call setNbListeners() first if you need more listeners.`
+        );
+        return;
+      }
+
+      // Validate input values to prevent NaN/Infinity
+      const values = [x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz];
+      if (hasSeparateAttenuationPosition) {
+        values.push(ax, ay, az);
+      }
+
+      for (const val of values) {
+        if (!isFinite(val)) {
+          console.error(
+            `FMOD [setListener3DAttributes]: Invalid value detected (NaN or Infinity) for listener id=${id}`
+          );
+          return;
+        }
+      }
 
       try {
+        const attributes = { ...this.FMOD._3D_ATTRIBUTES() };
+        attributes.position = { x, y, z };
+        attributes.velocity = { x: vx, y: vy, z: vz };
+        attributes.forward = { x: fx, y: fy, z: fz };
+        attributes.up = { x: ux, y: uy, z: uz };
+
         if (hasSeparateAttenuationPosition) {
           this.assert(
             this.gSystem.setListenerAttributes(id, attributes, {
@@ -1097,6 +1144,9 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [setListener3DAttributes]: Failed for listener id=${id}`,
+          `Position: (${x}, ${y}, ${z})`,
+          `Forward: (${fx}, ${fy}, ${fz})`,
+          `Up: (${ux}, ${uy}, ${uz})`,
           `FMOD Error: ${this._formatError(error)}`,
           error
         );
@@ -1120,6 +1170,8 @@ export default function (parentClass) {
       if (!this.gSystem) return;
       try {
         this.assert(this.gSystem.setNumListeners(nb));
+        this._numListeners = nb;
+        this._listenersInitialized = true;
       } catch (error) {
         console.error(
           `FMOD [setNbListeners]: Failed for nb=${nb}`,
