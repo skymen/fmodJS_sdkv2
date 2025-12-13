@@ -410,6 +410,211 @@ export default class FMODWrapper {
   // ==================== Bank Management ====================
 
   /**
+   * Load a bank from memory
+   * @param {Int8Array} memory - Bank data as Int8Array
+   * @param {number} length - Length of bank data
+   * @param {number} mode - Load mode flags
+   * @param {number} flags - Load bank flags
+   * @param {Object} bankhandle - Output object for bank handle
+   * @returns {number} FMOD result code
+   */
+  loadBankMemory(memory, length, mode, flags, bankhandle) {
+    return this.system.loadBankMemory(memory, length, mode, flags, bankhandle);
+  }
+
+  /**
+   * Wait for a bank to reach a specific loading state
+   * @param {Object} bankHandle - Bank handle
+   * @param {number} targetState - Target loading state (e.g., FMOD.STUDIO_LOADING_STATE_LOADED)
+   * @returns {Promise} Resolves when target state is reached
+   */
+  awaitBankLoadingState(bankHandle, targetState) {
+    return new Promise((resolve) => {
+      const outval = {};
+      bankHandle.getLoadingState(outval);
+      if (outval.val === targetState) {
+        resolve();
+        return;
+      }
+
+      const interval = setInterval(() => {
+        bankHandle.getLoadingState(outval);
+        if (outval.val === targetState) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * Load sample data for a bank
+   * @param {Object} bankHandle - Bank handle
+   * @returns {Promise} Resolves when sample data is loaded
+   */
+  loadBankSampleData(bankHandle) {
+    return new Promise((resolve, reject) => {
+      const result = bankHandle.loadSampleData();
+      if (result !== FMOD.OK) {
+        reject(
+          new Error(
+            `Failed to load bank sample data: ${FMOD.ErrorString(result)}`
+          )
+        );
+        return;
+      }
+
+      // Wait for sample data to be loaded
+      this.awaitBankSampleLoadingState(
+        bankHandle,
+        FMOD.STUDIO_LOADING_STATE_LOADED
+      )
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  /**
+   * Unload sample data for a bank
+   * @param {Object} bankHandle - Bank handle
+   * @returns {Promise} Resolves when sample data is unloaded
+   */
+  unloadBankSampleData(bankHandle) {
+    return new Promise((resolve, reject) => {
+      const result = bankHandle.unloadSampleData();
+      if (result !== FMOD.OK) {
+        reject(
+          new Error(
+            `Failed to unload bank sample data: ${FMOD.ErrorString(result)}`
+          )
+        );
+        return;
+      }
+
+      // Wait for sample data to be unloaded
+      this.awaitBankSampleLoadingState(
+        bankHandle,
+        FMOD.STUDIO_LOADING_STATE_UNLOADED
+      )
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  /**
+   * Wait for bank sample data to reach a specific loading state
+   * @param {Object} bankHandle - Bank handle
+   * @param {number} targetState - Target loading state
+   * @returns {Promise} Resolves when target state is reached
+   */
+  awaitBankSampleLoadingState(bankHandle, targetState) {
+    return new Promise((resolve) => {
+      const outval = {};
+      bankHandle.getSampleLoadingState(outval);
+      if (outval.val === targetState) {
+        resolve();
+        return;
+      }
+
+      const interval = setInterval(() => {
+        bankHandle.getSampleLoadingState(outval);
+        if (outval.val === targetState) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * Load sample data for an event
+   * @param {string} eventPath - Event path
+   * @returns {Promise} Resolves when sample data is loaded
+   */
+  loadEventSampleData(eventPath) {
+    return new Promise((resolve, reject) => {
+      const desc = this._getEventDescription(eventPath);
+      if (!desc) {
+        reject(new Error(`Event not found: ${eventPath}`));
+        return;
+      }
+
+      const result = desc.loadSampleData();
+      if (result !== FMOD.OK) {
+        reject(
+          new Error(
+            `Failed to load event sample data: ${FMOD.ErrorString(result)}`
+          )
+        );
+        return;
+      }
+
+      // Wait for sample data to be loaded
+      this.awaitEventSampleLoadingState(desc, FMOD.STUDIO_LOADING_STATE_LOADED)
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  /**
+   * Unload sample data for an event
+   * @param {string} eventPath - Event path
+   * @returns {Promise} Resolves when sample data is unloaded
+   */
+  unloadEventSampleData(eventPath) {
+    return new Promise((resolve, reject) => {
+      const desc = this._getEventDescription(eventPath);
+      if (!desc) {
+        reject(new Error(`Event not found: ${eventPath}`));
+        return;
+      }
+
+      const result = desc.unloadSampleData();
+      if (result !== FMOD.OK) {
+        reject(
+          new Error(
+            `Failed to unload event sample data: ${FMOD.ErrorString(result)}`
+          )
+        );
+        return;
+      }
+
+      // Wait for sample data to be unloaded
+      this.awaitEventSampleLoadingState(
+        desc,
+        FMOD.STUDIO_LOADING_STATE_UNLOADED
+      )
+        .then(resolve)
+        .catch(reject);
+    });
+  }
+
+  /**
+   * Wait for event sample data to reach a specific loading state
+   * @param {Object} eventDesc - Event description handle
+   * @param {number} targetState - Target loading state
+   * @returns {Promise} Resolves when target state is reached
+   */
+  awaitEventSampleLoadingState(eventDesc, targetState) {
+    return new Promise((resolve) => {
+      const outval = {};
+      eventDesc.getSampleLoadingState(outval);
+      if (outval.val === targetState) {
+        resolve();
+        return;
+      }
+
+      const interval = setInterval(() => {
+        eventDesc.getSampleLoadingState(outval);
+        if (outval.val === targetState) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 100);
+    });
+  }
+
+  /**
    * Load a bank file
    * @param {string} bankName - Bank filename (e.g., 'Master.bank')
    * @returns {Promise} Resolves when bank is loaded

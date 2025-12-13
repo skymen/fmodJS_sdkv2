@@ -229,6 +229,22 @@ export default function (parentClass) {
           "set-suspended",
           ([suspended, time]) => this.setSuspended(suspended, time),
         ],
+        [
+          "load-bank-sample-data",
+          ([bankName]) => this.loadBankSampleData(bankName),
+        ],
+        [
+          "unload-bank-sample-data",
+          ([bankName]) => this.unloadBankSampleData(bankName),
+        ],
+        [
+          "load-event-sample-data",
+          ([eventPath]) => this.loadEventSampleData(eventPath),
+        ],
+        [
+          "unload-event-sample-data",
+          ([eventPath]) => this.unloadEventSampleData(eventPath),
+        ],
       ]);
     }
 
@@ -443,7 +459,7 @@ export default function (parentClass) {
         const memory = await this.fetchUrlAsInt8Array(bankOrName.url);
         const bankhandle = {};
 
-        const errno = this.wrapper.system.loadBankMemory(
+        const errno = this.wrapper.loadBankMemory(
           memory,
           memory.length,
           this.FMOD.STUDIO_LOAD_MEMORY,
@@ -462,8 +478,8 @@ export default function (parentClass) {
         bankOrName.bankHandle = bankhandle.val;
 
         // Wait for bank to be fully loaded
-        await this._awaitBankLoadedState(
-          bankOrName,
+        await this.wrapper.awaitBankLoadingState(
+          bankOrName.bankHandle,
           this.FMOD.STUDIO_LOADING_STATE_LOADED
         );
 
@@ -481,25 +497,6 @@ export default function (parentClass) {
         console.error(`FMOD [loadBank]: Failed to load bank`, error);
         throw error;
       }
-    }
-
-    _awaitBankLoadedState(bank, state) {
-      return new Promise((resolve) => {
-        const outval = {};
-        bank.bankHandle.getLoadingState(outval);
-        if (outval.val === state) {
-          resolve();
-          return;
-        }
-
-        const interval = setInterval(() => {
-          bank.bankHandle.getLoadingState(outval);
-          if (outval.val === state) {
-            clearInterval(interval);
-            resolve();
-          }
-        }, 100);
-      });
     }
 
     async unloadBank(bankOrName) {
@@ -520,8 +517,8 @@ export default function (parentClass) {
       try {
         this.assert(bankOrName.bankHandle.unload());
 
-        await this._awaitBankLoadedState(
-          bankOrName,
+        await this.wrapper.awaitBankLoadingState(
+          bankOrName.bankHandle,
           this.FMOD.STUDIO_LOADING_STATE_UNLOADED
         );
 
@@ -1000,6 +997,76 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [setSuspended]: Failed for suspended=${suspended}`,
+          error
+        );
+      }
+    }
+
+    //====================================================================
+    // Sample Data Management Methods (Delegated to Wrapper)
+    //====================================================================
+
+    async loadBankSampleData(bankOrName) {
+      if (typeof bankOrName === "string") {
+        bankOrName =
+          this.banksByName.get(bankOrName) || this.banksByPath.get(bankOrName);
+      }
+
+      if (!bankOrName || !bankOrName.loaded) {
+        console.error("Bank not found or not loaded.");
+        return;
+      }
+
+      try {
+        await this.wrapper.loadBankSampleData(bankOrName.bankHandle);
+      } catch (error) {
+        console.error(
+          `FMOD [loadBankSampleData]: Failed for bank="${bankOrName.name}"`,
+          error
+        );
+      }
+    }
+
+    async unloadBankSampleData(bankOrName) {
+      if (typeof bankOrName === "string") {
+        bankOrName =
+          this.banksByName.get(bankOrName) || this.banksByPath.get(bankOrName);
+      }
+
+      if (!bankOrName || !bankOrName.loaded) {
+        console.error("Bank not found or not loaded.");
+        return;
+      }
+
+      try {
+        await this.wrapper.unloadBankSampleData(bankOrName.bankHandle);
+      } catch (error) {
+        console.error(
+          `FMOD [unloadBankSampleData]: Failed for bank="${bankOrName.name}"`,
+          error
+        );
+      }
+    }
+
+    async loadEventSampleData(eventPath) {
+      if (!this.wrapper) return;
+      try {
+        await this.wrapper.loadEventSampleData(eventPath);
+      } catch (error) {
+        console.error(
+          `FMOD [loadEventSampleData]: Failed for event="${eventPath}"`,
+          error
+        );
+      }
+    }
+
+    async unloadEventSampleData(eventPath) {
+      if (!this.wrapper) return;
+      try {
+        await this.wrapper.unloadEventSampleData(eventPath);
+      } catch (error) {
+        console.error(
+          `FMOD [unloadEventSampleData]: Failed for event="${eventPath}"`,
           error
         );
       }
