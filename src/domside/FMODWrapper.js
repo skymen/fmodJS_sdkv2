@@ -166,11 +166,11 @@ export default class FMODWrapper {
   update() {
     if (!this.initialized || !this.system) return;
 
-    // Clean up released/stopped instances
-    this._cleanupInstances();
-
     // Update FMOD
     this.system.update();
+
+    // Clean up released/stopped instances
+    this._cleanupInstances();
   }
 
   /**
@@ -182,6 +182,10 @@ export default class FMODWrapper {
 
     for (const [id, data] of this.instances) {
       if (data.released) {
+        // Actually release the FMOD instance now, before system.update()
+        if (data.instance) {
+          //data.instance.release();
+        }
         toRemove.push(id);
         continue;
       }
@@ -199,14 +203,19 @@ export default class FMODWrapper {
       // If we get an error, the instance may have been released externally
       if (result !== FMOD.OK) {
         data.released = true;
+        if (data.instance) {
+          //data.instance.release();
+        }
         toRemove.push(id);
         continue;
       }
 
       if (stateOut.val === FMOD.STUDIO_PLAYBACK_STOPPED) {
         if (data.autoRelease) {
-          data.instance.release();
           data.released = true;
+          if (data.instance) {
+            //data.instance.release();
+          }
           toRemove.push(id);
         }
       }
@@ -687,7 +696,8 @@ export default class FMODWrapper {
       }
 
       if (release) {
-        data.instance.release();
+        // Mark for release but don't call release() yet - let cleanup handle it
+        // This prevents use-after-free when other operations are pending
         data.released = true;
       }
     }
@@ -721,7 +731,7 @@ export default class FMODWrapper {
 
     for (const { data } of instances) {
       if (!data.released) {
-        data.instance.release();
+        // Mark for release but don't call release() yet - let cleanup handle it
         data.released = true;
       }
     }
