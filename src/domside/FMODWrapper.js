@@ -38,6 +38,9 @@ export default class FMODWrapper {
     this.tagIndex = new Map(); // tag -> Set of instanceIds
     this.nextInstanceId = 1;
 
+    // Pending release queue - instances to stop/release on next update
+    this.pendingRelease = []; // Array of { instance, stopMode }
+
     // Event description cache
     this.eventDescriptions = new Map(); // eventPath -> eventDescription
 
@@ -174,10 +177,13 @@ export default class FMODWrapper {
     try {
       // Clean up released/stopped instances BEFORE updating
       // This prevents FMOD from trying to process deleted handles
-      this._cleanupInstances();
 
       // Update FMOD
       this.system.update();
+
+      // Process pending releases from previous tick
+      this._processPendingReleases();
+      this._cleanupInstances();
     } catch (error) {
       console.error("FMOD [update]: Critical error in update cycle:", error);
 
@@ -214,6 +220,31 @@ export default class FMODWrapper {
       }
       this.currentCycleCalls = [];
     }
+  }
+
+  /**
+   * Process instances pending stop and release
+   * @private
+   */
+  _processPendingReleases() {
+    for (const { instance, stopMode } of this.pendingRelease) {
+      try {
+        // Stop the instance if stopMode is provided
+        if (stopMode !== null) {
+          const stopResult = instance.stop(stopMode);
+          if (stopResult !== FMOD.OK) {
+            console.warn(
+              `Failed to stop pending instance: ${FMOD.ErrorString(stopResult)}`
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(`Error processing pending release:`, error);
+      }
+    }
+
+    // Clear the pending queue
+    this.pendingRelease = [];
   }
 
   /**
@@ -584,12 +615,12 @@ export default class FMODWrapper {
    * @returns {number|null} Instance ID or null on failure
    */
   startEvent(name, tags = "", destroyWhenStopped = true) {
+    const id = this.instantiateEvent(name, tags);
     this.currentCycleCalls.push({
       method: "startEvent",
-      params: { name, tags, destroyWhenStopped },
+      params: { name, tags, destroyWhenStopped, id },
       timestamp: Date.now(),
     });
-    const id = this.instantiateEvent(name, tags);
     if (id === null) return null;
 
     const data = this.instances.get(id);
@@ -783,25 +814,24 @@ export default class FMODWrapper {
       : FMOD.STUDIO_STOP_IMMEDIATE;
 
     for (const { id, data } of instances) {
-      const result = data.instance.stop(stopMode);
-      if (result !== FMOD.OK) {
-        console.warn(`Failed to stop instance: ${FMOD.ErrorString(result)}`);
-      }
-
       if (release) {
-        // Release immediately to prevent use-after-free
-        // FMOD has already queued the stop command, so it's safe to release now
+        // Queue instance for stop and release on next tick
+        // This prevents queued operations from accessing it
+        this.pendingRelease.push({
+          instance: data.instance,
+          stopMode: stopMode,
+        });
+
+        // Remove from tracking immediately to prevent further operations
         data.released = true;
-        if (data.instance) {
-          try {
-            data.instance.release();
-            data.instance = null;
-          } catch (error) {
-            console.warn(`Error releasing instance ${id} in stopEvent:`, error);
-          }
-        }
-        // Remove from tracking immediately
+        data.instance = null; // Clear reference so it's not used
         this._removeInstance(id);
+      } else {
+        // Just stop without release
+        const result = data.instance.stop(stopMode);
+        if (result !== FMOD.OK) {
+          console.warn(`Failed to stop instance: ${FMOD.ErrorString(result)}`);
+        }
       }
     }
   }
@@ -849,20 +879,15 @@ export default class FMODWrapper {
 
     for (const { id, data } of instances) {
       if (!data.released) {
-        // Release immediately to prevent use-after-free
+        // Queue instance for release on next tick (already stopped)
+        this.pendingRelease.push({
+          instance: data.instance,
+          stopMode: null, // Already stopped, just release
+        });
+
+        // Remove from tracking immediately to prevent further operations
         data.released = true;
-        if (data.instance) {
-          try {
-            data.instance.release();
-            data.instance = null;
-          } catch (error) {
-            console.warn(
-              `Error releasing instance ${id} in releaseAllEventInstances:`,
-              error
-            );
-          }
-        }
-        // Remove from tracking immediately
+        data.instance = null; // Clear reference so it's not used
         this._removeInstance(id);
       }
     }
