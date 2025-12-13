@@ -672,6 +672,9 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopEvent(name, tag, allowFadeOut = true, release = true) {
+    console.log(
+      `stopEvent called with name=${name}, tag=${tag}, allowFadeOut=${allowFadeOut}, release=${release}`
+    );
     const instances = this._getMatchingInstances(name, tag);
     const stopMode = allowFadeOut
       ? FMOD.STUDIO_STOP_ALLOWFADEOUT
@@ -813,6 +816,23 @@ export default class FMODWrapper {
    * @param {number} uz - Up Z
    */
   setEvent3DAttributes(name, tag, x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz) {
+    console.log("setEvent3DAttributes called with:", {
+      name,
+      tag,
+      x,
+      y,
+      z,
+      vx,
+      vy,
+      vz,
+      fx,
+      fy,
+      fz,
+      ux,
+      uy,
+      uz,
+    });
+
     const instances = this._getMatchingInstances(name, tag);
 
     const attributes = FMOD._3D_ATTRIBUTES();

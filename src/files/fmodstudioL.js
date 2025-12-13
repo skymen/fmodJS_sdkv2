@@ -5911,6 +5911,20 @@ var FMODModule = (() => {
     var _emscripten_log = (flags, format, varargs) => {
       var result = formatString(format, varargs);
       var str = UTF8ArrayToString(result, 0);
+
+      // Filter out harmless critical section warnings (they're not needed in single-threaded JS)
+      if (
+        str.includes("FMOD_OS_CriticalSection_Enter") ||
+        str.includes("FMOD_OS_CriticalSection_Leave")
+      ) {
+        if (
+          str.includes("cannot enter NULL critical section") ||
+          str.includes("cannot leave NULL critical section")
+        ) {
+          return; // Suppress these warnings
+        }
+      }
+
       emscriptenLog(flags, str);
     };
     var getHeapMax = () => 2147483648;
