@@ -41,7 +41,10 @@ export default class FMODWrapper {
     // Event description cache
     this.eventDescriptions = new Map(); // eventPath -> eventDescription
 
-    this.eventCallsDuringCycle = [];
+    // Event call tracking - stores last few cycles for debugging
+    this.eventCallHistory = []; // Array of cycles, each cycle is an array of calls
+    this.currentCycleCalls = [];
+    this.maxCyclesStored = 5;
   }
 
   /**
@@ -176,17 +179,41 @@ export default class FMODWrapper {
       // Update FMOD
       this.system.update();
     } catch (error) {
-      console.error("FMOD update failed:", error);
-      console.error(
-        "Event calls during this cycle:",
-        JSON.stringify(this.eventCallsDuringCycle, null, 2)
-      );
-      this.eventCallsDuringCycle = [];
-      throw error;
+      console.error("FMOD [update]: Critical error in update cycle:", error);
+
+      // Log event call history for debugging
+      if (this.eventCallHistory.length > 0) {
+        console.error(
+          "Event calls during last",
+          this.eventCallHistory.length,
+          "cycles:"
+        );
+        this.eventCallHistory.forEach((cycle, index) => {
+          console.error(
+            `Cycle ${index + 1} (${cycle.length} calls):`,
+            JSON.stringify(cycle, null, 2)
+          );
+        });
+      }
+
+      // Clear history after logging error
+      this.eventCallHistory = [];
+      this.currentCycleCalls = [];
+
+      // Don't re-throw - let the system continue running
+      // The error has been logged and we've cleaned up state
+      console.warn("FMOD [update]: Continuing after error recovery");
     }
 
-    // Clear event calls from previous cycle
-    this.eventCallsDuringCycle = [];
+    // Save current cycle to history and start new cycle
+    if (this.currentCycleCalls.length > 0) {
+      this.eventCallHistory.push(this.currentCycleCalls);
+      // Keep only the last N cycles
+      if (this.eventCallHistory.length > this.maxCyclesStored) {
+        this.eventCallHistory.shift();
+      }
+      this.currentCycleCalls = [];
+    }
   }
 
   /**
@@ -198,9 +225,14 @@ export default class FMODWrapper {
 
     for (const [id, data] of this.instances) {
       if (data.released) {
-        // Actually release the FMOD instance now, before system.update()
+        // Release the FMOD instance if not already released
         if (data.instance) {
-          data.instance.release();
+          try {
+            data.instance.release();
+          } catch (error) {
+            console.warn(`Error releasing instance ${id}:`, error);
+          }
+          data.instance = null; // Prevent double-release
         }
         toRemove.push(id);
         continue;
@@ -220,7 +252,12 @@ export default class FMODWrapper {
       if (result !== FMOD.OK) {
         data.released = true;
         if (data.instance) {
-          data.instance.release();
+          try {
+            data.instance.release();
+          } catch (error) {
+            console.warn(`Error releasing invalid instance ${id}:`, error);
+          }
+          data.instance = null; // Prevent double-release
         }
         toRemove.push(id);
         continue;
@@ -230,7 +267,12 @@ export default class FMODWrapper {
         if (data.autoRelease) {
           data.released = true;
           if (data.instance) {
-            data.instance.release();
+            try {
+              data.instance.release();
+            } catch (error) {
+              console.warn(`Error releasing stopped instance ${id}:`, error);
+            }
+            data.instance = null; // Prevent double-release
           }
           toRemove.push(id);
         }
@@ -484,7 +526,7 @@ export default class FMODWrapper {
    * @returns {number|null} Instance ID or null on failure
    */
   instantiateEvent(name, tags = "") {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "instantiateEvent",
       params: { name, tags },
       timestamp: Date.now(),
@@ -542,7 +584,7 @@ export default class FMODWrapper {
    * @returns {number|null} Instance ID or null on failure
    */
   startEvent(name, tags = "", destroyWhenStopped = true) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "startEvent",
       params: { name, tags, destroyWhenStopped },
       timestamp: Date.now(),
@@ -558,7 +600,12 @@ export default class FMODWrapper {
       console.error(
         `Failed to start event "${name}": ${FMOD.ErrorString(result)}`
       );
-      data.instance.release();
+      try {
+        data.instance.release();
+      } catch (error) {
+        console.warn(`Error releasing failed instance:`, error);
+      }
+      data.instance = null; // Prevent double-release
       this._removeInstance(id);
       return null;
     }
@@ -578,7 +625,7 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setEventParameter(name, tag, param, isId, value, ignoreSeekSpeed = false) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setEventParameter",
       params: { name, tag, param, isId, value, ignoreSeekSpeed },
       timestamp: Date.now(),
@@ -621,7 +668,7 @@ export default class FMODWrapper {
     label,
     ignoreSeekSpeed = false
   ) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setEventParameterWithLabel",
       params: { name, tag, param, isId, label, ignoreSeekSpeed },
       timestamp: Date.now(),
@@ -661,7 +708,7 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setGlobalParameter(param, isId, value, ignoreSeekSpeed = false) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setGlobalParameter",
       params: { param, isId, value, ignoreSeekSpeed },
       timestamp: Date.now(),
@@ -687,7 +734,7 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setGlobalParameterWithLabel(param, isId, label, ignoreSeekSpeed = false) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setGlobalParameterWithLabel",
       params: { param, isId, label, ignoreSeekSpeed },
       timestamp: Date.now(),
@@ -725,7 +772,7 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopEvent(name, tag, allowFadeOut = true, release = true) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "stopEvent",
       params: { name, tag, allowFadeOut, release },
       timestamp: Date.now(),
@@ -756,7 +803,7 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopAllEventInstances(name, allowFadeOut = true, release = true) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "stopAllEventInstances",
       params: { name, allowFadeOut, release },
       timestamp: Date.now(),
@@ -770,7 +817,7 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopAllEvents(allowFadeOut = true, release = true) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "stopAllEvents",
       params: { allowFadeOut, release },
       timestamp: Date.now(),
@@ -783,7 +830,7 @@ export default class FMODWrapper {
    * @param {string} name - Event name
    */
   releaseAllEventInstances(name) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "releaseAllEventInstances",
       params: { name },
       timestamp: Date.now(),
@@ -805,7 +852,7 @@ export default class FMODWrapper {
    * @param {boolean} paused - Paused state
    */
   setEventPaused(name, tag, paused) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setEventPaused",
       params: { name, tag, paused },
       timestamp: Date.now(),
@@ -826,7 +873,7 @@ export default class FMODWrapper {
    * @param {number} position - Position in milliseconds
    */
   setEventTimelinePosition(name, tag, position) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setEventTimelinePosition",
       params: { name, tag, position },
       timestamp: Date.now(),
@@ -849,7 +896,7 @@ export default class FMODWrapper {
    * @returns {Promise} Resolves when all matching events have stopped
    */
   waitForEventStop(name, tag) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "waitForEventStop",
       params: { name, tag },
       timestamp: Date.now(),
@@ -900,7 +947,7 @@ export default class FMODWrapper {
    * @param {number} uz - Up Z
    */
   setEvent3DAttributes(name, tag, x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setEvent3DAttributes",
       params: { name, tag, x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz },
       timestamp: Date.now(),
@@ -909,25 +956,32 @@ export default class FMODWrapper {
     const instances = this._getMatchingInstances(name, tag);
 
     const attributes = FMOD._3D_ATTRIBUTES();
-    attributes.position.x = x;
-    attributes.position.y = y;
-    attributes.position.z = z;
-    attributes.velocity.x = vx;
-    attributes.velocity.y = vy;
-    attributes.velocity.z = vz;
-    attributes.forward.x = fx;
-    attributes.forward.y = fy;
-    attributes.forward.z = fz;
-    attributes.up.x = ux;
-    attributes.up.y = uy;
-    attributes.up.z = uz;
+    try {
+      attributes.position.x = x;
+      attributes.position.y = y;
+      attributes.position.z = z;
+      attributes.velocity.x = vx;
+      attributes.velocity.y = vy;
+      attributes.velocity.z = vz;
+      attributes.forward.x = fx;
+      attributes.forward.y = fy;
+      attributes.forward.z = fz;
+      attributes.up.x = ux;
+      attributes.up.y = uy;
+      attributes.up.z = uz;
 
-    for (const { data } of instances) {
-      const result = data.instance.set3DAttributes(attributes);
-      if (result !== FMOD.OK) {
-        console.warn(
-          `Failed to set 3D attributes: ${FMOD.ErrorString(result)}`
-        );
+      for (const { data } of instances) {
+        const result = data.instance.set3DAttributes(attributes);
+        if (result !== FMOD.OK) {
+          console.warn(
+            `Failed to set 3D attributes: ${FMOD.ErrorString(result)}`
+          );
+        }
+      }
+    } finally {
+      // Clean up the Emscripten object to prevent memory leaks
+      if (attributes && attributes.delete) {
+        attributes.delete();
       }
     }
   }
@@ -990,7 +1044,7 @@ export default class FMODWrapper {
     ay = 0,
     az = 0
   ) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setListener3DAttributes",
       params: {
         id,
@@ -1014,36 +1068,47 @@ export default class FMODWrapper {
       timestamp: Date.now(),
     });
     const attributes = FMOD._3D_ATTRIBUTES();
-    attributes.position.x = x;
-    attributes.position.y = y;
-    attributes.position.z = z;
-    attributes.velocity.x = vx;
-    attributes.velocity.y = vy;
-    attributes.velocity.z = vz;
-    attributes.forward.x = fx;
-    attributes.forward.y = fy;
-    attributes.forward.z = fz;
-    attributes.up.x = ux;
-    attributes.up.y = uy;
-    attributes.up.z = uz;
-
     let attenuationPosition = null;
-    if (hasSeparateAttenuationPosition) {
-      attenuationPosition = FMOD.VECTOR();
-      attenuationPosition.x = ax;
-      attenuationPosition.y = ay;
-      attenuationPosition.z = az;
-    }
 
-    const result = this.system.setListenerAttributes(
-      id,
-      attributes,
-      attenuationPosition
-    );
-    if (result !== FMOD.OK) {
-      console.warn(
-        `Failed to set listener ${id} attributes: ${FMOD.ErrorString(result)}`
+    try {
+      attributes.position.x = x;
+      attributes.position.y = y;
+      attributes.position.z = z;
+      attributes.velocity.x = vx;
+      attributes.velocity.y = vy;
+      attributes.velocity.z = vz;
+      attributes.forward.x = fx;
+      attributes.forward.y = fy;
+      attributes.forward.z = fz;
+      attributes.up.x = ux;
+      attributes.up.y = uy;
+      attributes.up.z = uz;
+
+      if (hasSeparateAttenuationPosition) {
+        attenuationPosition = FMOD.VECTOR();
+        attenuationPosition.x = ax;
+        attenuationPosition.y = ay;
+        attenuationPosition.z = az;
+      }
+
+      const result = this.system.setListenerAttributes(
+        id,
+        attributes,
+        attenuationPosition
       );
+      if (result !== FMOD.OK) {
+        console.warn(
+          `Failed to set listener ${id} attributes: ${FMOD.ErrorString(result)}`
+        );
+      }
+    } finally {
+      // Clean up the Emscripten objects to prevent memory leaks
+      if (attributes && attributes.delete) {
+        attributes.delete();
+      }
+      if (attenuationPosition && attenuationPosition.delete) {
+        attenuationPosition.delete();
+      }
     }
   }
 
@@ -1053,7 +1118,7 @@ export default class FMODWrapper {
    * @param {number} weight - Weight value (0.0 to 1.0)
    */
   setListenerWeight(id, weight) {
-    this.eventCallsDuringCycle.push({
+    this.currentCycleCalls.push({
       method: "setListenerWeight",
       params: { id, weight },
       timestamp: Date.now(),
