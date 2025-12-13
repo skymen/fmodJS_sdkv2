@@ -789,9 +789,19 @@ export default class FMODWrapper {
       }
 
       if (release) {
-        // Mark for release but don't call release() yet - let cleanup handle it
-        // This prevents use-after-free when other operations are pending
+        // Release immediately to prevent use-after-free
+        // FMOD has already queued the stop command, so it's safe to release now
         data.released = true;
+        if (data.instance) {
+          try {
+            data.instance.release();
+            data.instance = null;
+          } catch (error) {
+            console.warn(`Error releasing instance ${id} in stopEvent:`, error);
+          }
+        }
+        // Remove from tracking immediately
+        this._removeInstance(id);
       }
     }
   }
@@ -837,10 +847,23 @@ export default class FMODWrapper {
     });
     const instances = this._getMatchingInstances(name, null);
 
-    for (const { data } of instances) {
+    for (const { id, data } of instances) {
       if (!data.released) {
-        // Mark for release but don't call release() yet - let cleanup handle it
+        // Release immediately to prevent use-after-free
         data.released = true;
+        if (data.instance) {
+          try {
+            data.instance.release();
+            data.instance = null;
+          } catch (error) {
+            console.warn(
+              `Error releasing instance ${id} in releaseAllEventInstances:`,
+              error
+            );
+          }
+        }
+        // Remove from tracking immediately
+        this._removeInstance(id);
       }
     }
   }
@@ -956,34 +979,31 @@ export default class FMODWrapper {
     const instances = this._getMatchingInstances(name, tag);
 
     const attributes = FMOD._3D_ATTRIBUTES();
-    try {
-      attributes.position.x = x;
-      attributes.position.y = y;
-      attributes.position.z = z;
-      attributes.velocity.x = vx;
-      attributes.velocity.y = vy;
-      attributes.velocity.z = vz;
-      attributes.forward.x = fx;
-      attributes.forward.y = fy;
-      attributes.forward.z = fz;
-      attributes.up.x = ux;
-      attributes.up.y = uy;
-      attributes.up.z = uz;
+    attributes.position.x = x;
+    attributes.position.y = y;
+    attributes.position.z = z;
+    attributes.velocity.x = vx;
+    attributes.velocity.y = vy;
+    attributes.velocity.z = vz;
+    attributes.forward.x = fx;
+    attributes.forward.y = fy;
+    attributes.forward.z = fz;
+    attributes.up.x = ux;
+    attributes.up.y = uy;
+    attributes.up.z = uz;
 
-      for (const { data } of instances) {
-        const result = data.instance.set3DAttributes(attributes);
-        if (result !== FMOD.OK) {
-          console.warn(
-            `Failed to set 3D attributes: ${FMOD.ErrorString(result)}`
-          );
-        }
-      }
-    } finally {
-      // Clean up the Emscripten object to prevent memory leaks
-      if (attributes && attributes.delete) {
-        attributes.delete();
+    for (const { data } of instances) {
+      const result = data.instance.set3DAttributes(attributes);
+      if (result !== FMOD.OK) {
+        console.warn(
+          `Failed to set 3D attributes: ${FMOD.ErrorString(result)}`
+        );
       }
     }
+
+    // Note: Do not manually delete attributes - FMOD copies the data and
+    // Emscripten's GC will handle cleanup. Manual deletion can cause
+    // "Cannot use deleted val" errors during system.update()
   }
 
   /**
@@ -1068,48 +1088,41 @@ export default class FMODWrapper {
       timestamp: Date.now(),
     });
     const attributes = FMOD._3D_ATTRIBUTES();
+    attributes.position.x = x;
+    attributes.position.y = y;
+    attributes.position.z = z;
+    attributes.velocity.x = vx;
+    attributes.velocity.y = vy;
+    attributes.velocity.z = vz;
+    attributes.forward.x = fx;
+    attributes.forward.y = fy;
+    attributes.forward.z = fz;
+    attributes.up.x = ux;
+    attributes.up.y = uy;
+    attributes.up.z = uz;
+
     let attenuationPosition = null;
-
-    try {
-      attributes.position.x = x;
-      attributes.position.y = y;
-      attributes.position.z = z;
-      attributes.velocity.x = vx;
-      attributes.velocity.y = vy;
-      attributes.velocity.z = vz;
-      attributes.forward.x = fx;
-      attributes.forward.y = fy;
-      attributes.forward.z = fz;
-      attributes.up.x = ux;
-      attributes.up.y = uy;
-      attributes.up.z = uz;
-
-      if (hasSeparateAttenuationPosition) {
-        attenuationPosition = FMOD.VECTOR();
-        attenuationPosition.x = ax;
-        attenuationPosition.y = ay;
-        attenuationPosition.z = az;
-      }
-
-      const result = this.system.setListenerAttributes(
-        id,
-        attributes,
-        attenuationPosition
-      );
-      if (result !== FMOD.OK) {
-        console.warn(
-          `Failed to set listener ${id} attributes: ${FMOD.ErrorString(result)}`
-        );
-      }
-    } finally {
-      // Clean up the Emscripten objects to prevent memory leaks
-      if (attributes && attributes.delete) {
-        attributes.delete();
-      }
-      if (attenuationPosition && attenuationPosition.delete) {
-        attenuationPosition.delete();
-      }
+    if (hasSeparateAttenuationPosition) {
+      attenuationPosition = FMOD.VECTOR();
+      attenuationPosition.x = ax;
+      attenuationPosition.y = ay;
+      attenuationPosition.z = az;
     }
+
+    const result = this.system.setListenerAttributes(
+      id,
+      attributes,
+      attenuationPosition
+    );
+    if (result !== FMOD.OK) {
+      console.warn(
+        `Failed to set listener ${id} attributes: ${FMOD.ErrorString(result)}`
+      );
+    }
+
+    // Note: Do not manually delete attributes/attenuationPosition - FMOD copies
+    // the data and Emscripten's GC will handle cleanup. Manual deletion can cause
+    // "Cannot use deleted val" errors during system.update()
   }
 
   /**
