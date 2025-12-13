@@ -270,7 +270,7 @@ export default class FMODWrapper {
       }
 
       // Check if instance handle is still valid before accessing it
-      if (!data.instance) {
+      if (!data.instance || !this._isInstanceValid(data.instance)) {
         toRemove.push(id);
         continue;
       }
@@ -1041,11 +1041,8 @@ export default class FMODWrapper {
     if (!instance) return false;
 
     try {
-      const stateOut = {};
-      const result = instance.getPlaybackState(stateOut);
-      return result !== FMOD.ERR_INVALID_HANDLE;
+      return instance.isValid();
     } catch (error) {
-      // "Cannot use deleted val" or similar error
       return false;
     }
   }
