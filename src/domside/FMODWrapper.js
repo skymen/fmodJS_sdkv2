@@ -168,11 +168,25 @@ export default class FMODWrapper {
   update() {
     if (!this.initialized || !this.system) return;
 
-    // Update FMOD
-    this.system.update();
+    try {
+      // Clean up released/stopped instances BEFORE updating
+      // This prevents FMOD from trying to process deleted handles
+      this._cleanupInstances();
 
-    // Clean up released/stopped instances
-    this._cleanupInstances();
+      // Update FMOD
+      this.system.update();
+    } catch (error) {
+      console.error("FMOD update failed:", error);
+      console.error(
+        "Event calls during this cycle:",
+        JSON.stringify(this.eventCallsDuringCycle, null, 2)
+      );
+      this.eventCallsDuringCycle = [];
+      throw error;
+    }
+
+    // Clear event calls from previous cycle
+    this.eventCallsDuringCycle = [];
   }
 
   /**
@@ -470,6 +484,11 @@ export default class FMODWrapper {
    * @returns {number|null} Instance ID or null on failure
    */
   instantiateEvent(name, tags = "") {
+    this.eventCallsDuringCycle.push({
+      method: "instantiateEvent",
+      params: { name, tags },
+      timestamp: Date.now(),
+    });
     const desc = this._getEventDescription(name);
     if (!desc) return null;
 
@@ -523,6 +542,11 @@ export default class FMODWrapper {
    * @returns {number|null} Instance ID or null on failure
    */
   startEvent(name, tags = "", destroyWhenStopped = true) {
+    this.eventCallsDuringCycle.push({
+      method: "startEvent",
+      params: { name, tags, destroyWhenStopped },
+      timestamp: Date.now(),
+    });
     const id = this.instantiateEvent(name, tags);
     if (id === null) return null;
 
@@ -554,6 +578,11 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setEventParameter(name, tag, param, isId, value, ignoreSeekSpeed = false) {
+    this.eventCallsDuringCycle.push({
+      method: "setEventParameter",
+      params: { name, tag, param, isId, value, ignoreSeekSpeed },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
 
     for (const { data } of instances) {
@@ -592,6 +621,11 @@ export default class FMODWrapper {
     label,
     ignoreSeekSpeed = false
   ) {
+    this.eventCallsDuringCycle.push({
+      method: "setEventParameterWithLabel",
+      params: { name, tag, param, isId, label, ignoreSeekSpeed },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
 
     for (const { data } of instances) {
@@ -627,6 +661,11 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setGlobalParameter(param, isId, value, ignoreSeekSpeed = false) {
+    this.eventCallsDuringCycle.push({
+      method: "setGlobalParameter",
+      params: { param, isId, value, ignoreSeekSpeed },
+      timestamp: Date.now(),
+    });
     let result;
     if (isId) {
       result = this.system.setParameterByID(param, value, ignoreSeekSpeed);
@@ -648,6 +687,11 @@ export default class FMODWrapper {
    * @param {boolean} ignoreSeekSpeed - Ignore seek speed
    */
   setGlobalParameterWithLabel(param, isId, label, ignoreSeekSpeed = false) {
+    this.eventCallsDuringCycle.push({
+      method: "setGlobalParameterWithLabel",
+      params: { param, isId, label, ignoreSeekSpeed },
+      timestamp: Date.now(),
+    });
     let result;
     if (isId) {
       result = this.system.setParameterByIDWithLabel(
@@ -681,9 +725,11 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopEvent(name, tag, allowFadeOut = true, release = true) {
-    console.log(
-      `stopEvent called with name=${name}, tag=${tag}, allowFadeOut=${allowFadeOut}, release=${release}`
-    );
+    this.eventCallsDuringCycle.push({
+      method: "stopEvent",
+      params: { name, tag, allowFadeOut, release },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
     const stopMode = allowFadeOut
       ? FMOD.STUDIO_STOP_ALLOWFADEOUT
@@ -710,6 +756,11 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopAllEventInstances(name, allowFadeOut = true, release = true) {
+    this.eventCallsDuringCycle.push({
+      method: "stopAllEventInstances",
+      params: { name, allowFadeOut, release },
+      timestamp: Date.now(),
+    });
     this.stopEvent(name, null, allowFadeOut, release);
   }
 
@@ -719,6 +770,11 @@ export default class FMODWrapper {
    * @param {boolean} release - Release after stopping
    */
   stopAllEvents(allowFadeOut = true, release = true) {
+    this.eventCallsDuringCycle.push({
+      method: "stopAllEvents",
+      params: { allowFadeOut, release },
+      timestamp: Date.now(),
+    });
     this.stopEvent(null, null, allowFadeOut, release);
   }
 
@@ -727,6 +783,11 @@ export default class FMODWrapper {
    * @param {string} name - Event name
    */
   releaseAllEventInstances(name) {
+    this.eventCallsDuringCycle.push({
+      method: "releaseAllEventInstances",
+      params: { name },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, null);
 
     for (const { data } of instances) {
@@ -744,6 +805,11 @@ export default class FMODWrapper {
    * @param {boolean} paused - Paused state
    */
   setEventPaused(name, tag, paused) {
+    this.eventCallsDuringCycle.push({
+      method: "setEventPaused",
+      params: { name, tag, paused },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
     for (const { data } of instances) {
       const result = data.instance.setPaused(paused);
@@ -760,6 +826,11 @@ export default class FMODWrapper {
    * @param {number} position - Position in milliseconds
    */
   setEventTimelinePosition(name, tag, position) {
+    this.eventCallsDuringCycle.push({
+      method: "setEventTimelinePosition",
+      params: { name, tag, position },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
     for (const { data } of instances) {
       const result = data.instance.setTimelinePosition(position);
@@ -778,6 +849,11 @@ export default class FMODWrapper {
    * @returns {Promise} Resolves when all matching events have stopped
    */
   waitForEventStop(name, tag) {
+    this.eventCallsDuringCycle.push({
+      method: "waitForEventStop",
+      params: { name, tag },
+      timestamp: Date.now(),
+    });
     const instances = this._getMatchingInstances(name, tag);
 
     if (instances.length === 0) {
@@ -824,21 +900,10 @@ export default class FMODWrapper {
    * @param {number} uz - Up Z
    */
   setEvent3DAttributes(name, tag, x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz) {
-    console.log("setEvent3DAttributes called with:", {
-      name,
-      tag,
-      x,
-      y,
-      z,
-      vx,
-      vy,
-      vz,
-      fx,
-      fy,
-      fz,
-      ux,
-      uy,
-      uz,
+    this.eventCallsDuringCycle.push({
+      method: "setEvent3DAttributes",
+      params: { name, tag, x, y, z, vx, vy, vz, fx, fy, fz, ux, uy, uz },
+      timestamp: Date.now(),
     });
 
     const instances = this._getMatchingInstances(name, tag);
@@ -925,6 +990,29 @@ export default class FMODWrapper {
     ay = 0,
     az = 0
   ) {
+    this.eventCallsDuringCycle.push({
+      method: "setListener3DAttributes",
+      params: {
+        id,
+        x,
+        y,
+        z,
+        vx,
+        vy,
+        vz,
+        fx,
+        fy,
+        fz,
+        ux,
+        uy,
+        uz,
+        hasSeparateAttenuationPosition,
+        ax,
+        ay,
+        az,
+      },
+      timestamp: Date.now(),
+    });
     const attributes = FMOD._3D_ATTRIBUTES();
     attributes.position.x = x;
     attributes.position.y = y;
@@ -965,6 +1053,11 @@ export default class FMODWrapper {
    * @param {number} weight - Weight value (0.0 to 1.0)
    */
   setListenerWeight(id, weight) {
+    this.eventCallsDuringCycle.push({
+      method: "setListenerWeight",
+      params: { id, weight },
+      timestamp: Date.now(),
+    });
     const result = this.system.setListenerWeight(id, weight);
     if (result !== FMOD.OK) {
       console.warn(
