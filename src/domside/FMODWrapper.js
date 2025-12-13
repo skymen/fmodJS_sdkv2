@@ -258,14 +258,23 @@ export default class FMODWrapper {
   _getMatchingInstances(name, tag) {
     const results = [];
 
+    // Helper to check and add an instance
+    const tryAdd = (id, data) => {
+      if (!data || data.released) return;
+      if (name && data.name !== name) return;
+
+      // Check if instance is still valid
+      if (!this._isInstanceValid(data.instance)) {
+        data.released = true; // Mark for cleanup
+        return;
+      }
+
+      results.push({ id, data });
+    };
+
     // If tag is a number, it's an instance ID
     if (typeof tag === "number") {
-      const data = this.instances.get(tag);
-      if (data && !data.released) {
-        if (!name || data.name === name) {
-          results.push({ id: tag, data });
-        }
-      }
+      tryAdd(tag, this.instances.get(tag));
       return results;
     }
 
@@ -274,12 +283,7 @@ export default class FMODWrapper {
       const tagSet = this.tagIndex.get(tag.trim());
       if (tagSet) {
         for (const id of tagSet) {
-          const data = this.instances.get(id);
-          if (data && !data.released) {
-            if (!name || data.name === name) {
-              results.push({ id, data });
-            }
-          }
+          tryAdd(id, this.instances.get(id));
         }
       }
       return results;
@@ -287,11 +291,7 @@ export default class FMODWrapper {
 
     // No tag specified - get all instances (optionally filtered by name)
     for (const [id, data] of this.instances) {
-      if (!data.released) {
-        if (!name || data.name === name) {
-          results.push({ id, data });
-        }
-      }
+      tryAdd(id, data);
     }
     return results;
   }
@@ -567,9 +567,7 @@ export default class FMODWrapper {
       }
       if (result !== FMOD.OK) {
         console.warn(
-          `Failed to set parameter "${param}" on instance: ${FMOD.ErrorString(
-            result
-          )}`
+          `Failed to set parameter "${param}": ${FMOD.ErrorString(result)}`
         );
       }
     }
@@ -611,7 +609,7 @@ export default class FMODWrapper {
       }
       if (result !== FMOD.OK) {
         console.warn(
-          `Failed to set parameter "${param}" with label on instance: ${FMOD.ErrorString(
+          `Failed to set parameter "${param}" with label: ${FMOD.ErrorString(
             result
           )}`
         );
@@ -745,7 +743,6 @@ export default class FMODWrapper {
    */
   setEventPaused(name, tag, paused) {
     const instances = this._getMatchingInstances(name, tag);
-
     for (const { data } of instances) {
       const result = data.instance.setPaused(paused);
       if (result !== FMOD.OK) {
@@ -762,7 +759,6 @@ export default class FMODWrapper {
    */
   setEventTimelinePosition(name, tag, position) {
     const instances = this._getMatchingInstances(name, tag);
-
     for (const { data } of instances) {
       const result = data.instance.setTimelinePosition(position);
       if (result !== FMOD.OK) {
@@ -866,6 +862,25 @@ export default class FMODWrapper {
           `Failed to set 3D attributes: ${FMOD.ErrorString(result)}`
         );
       }
+    }
+  }
+
+  /**
+   * Check if an FMOD instance handle is still valid
+   * @private
+   * @param {Object} instance - FMOD event instance
+   * @returns {boolean} True if valid
+   */
+  _isInstanceValid(instance) {
+    if (!instance) return false;
+
+    try {
+      const stateOut = {};
+      const result = instance.getPlaybackState(stateOut);
+      return result !== FMOD.ERR_INVALID_HANDLE;
+    } catch (error) {
+      // "Cannot use deleted val" or similar error
+      return false;
     }
   }
 
