@@ -528,14 +528,14 @@ export default class FMODWrapper {
 
   /**
    * Load sample data for an event
-   * @param {string} eventPath - Event path
+   * @param {string} name - Event path
    * @returns {Promise} Resolves when sample data is loaded
    */
-  loadEventSampleData(eventPath) {
+  loadEventSampleData(name) {
     return new Promise((resolve, reject) => {
-      const desc = this._getEventDescription(eventPath);
+      const desc = this._getEventDescription(name);
       if (!desc) {
-        reject(new Error(`Event not found: ${eventPath}`));
+        reject(new Error(`Event not found: ${name}`));
         return;
       }
 
@@ -558,14 +558,14 @@ export default class FMODWrapper {
 
   /**
    * Unload sample data for an event
-   * @param {string} eventPath - Event path
+   * @param {string} name - Event path
    * @returns {Promise} Resolves when sample data is unloaded
    */
-  unloadEventSampleData(eventPath) {
+  unloadEventSampleData(name) {
     return new Promise((resolve, reject) => {
-      const desc = this._getEventDescription(eventPath);
+      const desc = this._getEventDescription(name);
       if (!desc) {
-        reject(new Error(`Event not found: ${eventPath}`));
+        reject(new Error(`Event not found: ${name}`));
         return;
       }
 

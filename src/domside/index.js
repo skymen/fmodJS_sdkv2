@@ -64,13 +64,23 @@ export default function (parentClass) {
 
         [
           "pre-init-load-bank",
-          ([path, preload, nonBlocking, name, url]) =>
-            this.PreInitLoadBank(path, preload, nonBlocking, name, url),
+          ([path, preload, nonBlocking, name, url, loadSampleData]) =>
+            this.PreInitLoadBank(
+              path,
+              preload,
+              nonBlocking,
+              name,
+              url,
+              loadSampleData
+            ),
         ],
         ["start-one-time-event", ([event]) => this.startOneTimeEvent(event)],
 
         ["update", () => this.update()],
-        ["load-bank", ([name]) => this.loadBank(name)],
+        [
+          "load-bank",
+          ([name, loadSampleData]) => this.loadBank(name, loadSampleData),
+        ],
         ["unload-bank", ([name]) => this.unloadBank(name)],
         ["unload-all-banks", () => this.unloadAllBanks()],
         [
@@ -229,26 +239,27 @@ export default function (parentClass) {
           "set-suspended",
           ([suspended, time]) => this.setSuspended(suspended, time),
         ],
-        [
-          "load-bank-sample-data",
-          ([bankName]) => this.loadBankSampleData(bankName),
-        ],
+        ["load-bank-sample-data", ([name]) => this.loadBankSampleData(name)],
         [
           "unload-bank-sample-data",
-          ([bankName]) => this.unloadBankSampleData(bankName),
+          ([name]) => this.unloadBankSampleData(name),
         ],
-        [
-          "load-event-sample-data",
-          ([eventPath]) => this.loadEventSampleData(eventPath),
-        ],
+        ["load-event-sample-data", ([name]) => this.loadEventSampleData(name)],
         [
           "unload-event-sample-data",
-          ([eventPath]) => this.unloadEventSampleData(eventPath),
+          ([name]) => this.unloadEventSampleData(name),
         ],
       ]);
     }
 
-    PreInitLoadBank(path, preload, nonBlocking, name, url) {
+    PreInitLoadBank(
+      path,
+      preload,
+      nonBlocking,
+      name,
+      url,
+      loadSampleData = false
+    ) {
       const bankConfig = {
         path,
         preload,
@@ -256,6 +267,7 @@ export default function (parentClass) {
         name,
         url,
         loaded: false,
+        loadSampleData,
       };
       this.bankConfigs.push(bankConfig);
       this.banksByName.set(name, bankConfig);
@@ -440,7 +452,7 @@ export default function (parentClass) {
     // Bank Management Methods
     //====================================================================
 
-    async loadBank(bankOrName) {
+    async loadBank(bankOrName, loadSampleData) {
       if (typeof bankOrName === "string") {
         bankOrName =
           this.banksByName.get(bankOrName) || this.banksByPath.get(bankOrName);
@@ -454,6 +466,12 @@ export default function (parentClass) {
       if (bankOrName.loaded) {
         return bankOrName;
       }
+
+      // Use the loadSampleData parameter if provided, otherwise use the bank config value
+      const shouldLoadSampleData =
+        loadSampleData !== undefined
+          ? loadSampleData
+          : bankOrName.loadSampleData;
 
       try {
         const memory = await this.fetchUrlAsInt8Array(bankOrName.url);
@@ -491,6 +509,11 @@ export default function (parentClass) {
           loaded: true,
           loading: false,
         });
+
+        // Load sample data if requested
+        if (shouldLoadSampleData) {
+          await this.loadBankSampleData(bankOrName);
+        }
 
         return bankOrName;
       } catch (error) {
@@ -1048,25 +1071,25 @@ export default function (parentClass) {
       }
     }
 
-    async loadEventSampleData(eventPath) {
+    async loadEventSampleData(name) {
       if (!this.wrapper) return;
       try {
-        await this.wrapper.loadEventSampleData(eventPath);
+        await this.wrapper.loadEventSampleData(name);
       } catch (error) {
         console.error(
-          `FMOD [loadEventSampleData]: Failed for event="${eventPath}"`,
+          `FMOD [loadEventSampleData]: Failed for event="${name}"`,
           error
         );
       }
     }
 
-    async unloadEventSampleData(eventPath) {
+    async unloadEventSampleData(name) {
       if (!this.wrapper) return;
       try {
-        await this.wrapper.unloadEventSampleData(eventPath);
+        await this.wrapper.unloadEventSampleData(name);
       } catch (error) {
         console.error(
-          `FMOD [unloadEventSampleData]: Failed for event="${eventPath}"`,
+          `FMOD [unloadEventSampleData]: Failed for event="${name}"`,
           error
         );
       }
