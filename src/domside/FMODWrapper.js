@@ -40,6 +40,8 @@ export default class FMODWrapper {
 
     // Event description cache
     this.eventDescriptions = new Map(); // eventPath -> eventDescription
+
+    this.eventCallsDuringCycle = [];
   }
 
   /**
@@ -184,7 +186,7 @@ export default class FMODWrapper {
       if (data.released) {
         // Actually release the FMOD instance now, before system.update()
         if (data.instance) {
-          //data.instance.release();
+          data.instance.release();
         }
         toRemove.push(id);
         continue;
@@ -204,7 +206,7 @@ export default class FMODWrapper {
       if (result !== FMOD.OK) {
         data.released = true;
         if (data.instance) {
-          //data.instance.release();
+          data.instance.release();
         }
         toRemove.push(id);
         continue;
@@ -214,7 +216,7 @@ export default class FMODWrapper {
         if (data.autoRelease) {
           data.released = true;
           if (data.instance) {
-            //data.instance.release();
+            data.instance.release();
           }
           toRemove.push(id);
         }
