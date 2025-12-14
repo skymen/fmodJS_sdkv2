@@ -516,13 +516,23 @@ export default class FMODWrapper {
         return;
       }
 
+      const duration = 100;
+      let elapsed = duration;
+
       const interval = setInterval(() => {
         bankHandle.getSampleLoadingState(outval);
         if (outval.val === targetState) {
           clearInterval(interval);
           resolve();
+        } else {
+          elapsed += duration;
+          if (elapsed >= 5000) {
+            console.warn(
+              `Waiting for bank sample is taking a long time. Did you load a bank with streamed sample data? Banks with streamed sample data will never finish loading due to a bug in FMOD.`
+            );
+          }
         }
-      }, 100);
+      }, duration);
     });
   }
 

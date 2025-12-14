@@ -49,6 +49,9 @@ export default function (parentClass) {
 
       // Advanced settings
       this.advancedSettings = {};
+      this.dspBufferSize = 1024;
+      this.dspBufferCount = 4;
+      this.maxChannels = 1024;
 
       // Initialize handlers
       this.SetUpDOMHandlers();
@@ -287,6 +290,10 @@ export default function (parentClass) {
 
     PreInit(config) {
       this.advancedSettings = config.advancedSettings || {};
+      this.dspBufferSize = config.dspBufferSize || 1024;
+      this.dspBufferCount = config.dspBufferCount || 4;
+      this.maxChannels = config.maxChannels || 1024;
+      this.FMOD["INITIAL_MEMORY"] = (config.initialMemory || 80) * 1024 * 1024;
       return Promise.all([
         new Promise((resolve) => {
           this._preRunCallbacks.push(() => {
@@ -346,9 +353,9 @@ export default function (parentClass) {
 
       // Let the wrapper initialize FMOD with custom options
       await this.wrapper.initialize({
-        maxChannels: 1024,
-        dspBufferSize: 512,
-        numBuffers: 2,
+        maxChannels: this.maxChannels,
+        dspBufferSize: this.dspBufferSize,
+        numBuffers: this.dspBufferCount,
         advancedSettings: this.advancedSettings,
       });
     }
