@@ -96,6 +96,43 @@ export default function (parentClass) {
             this.startEvent(name, tag, destroyWhenStopped),
         ],
         [
+          "start-event-at-position",
+          ([
+            name,
+            tag,
+            x,
+            y,
+            z,
+            vx,
+            vy,
+            vz,
+            fx,
+            fy,
+            fz,
+            ux,
+            uy,
+            uz,
+            destroyWhenStopped,
+          ]) =>
+            this.startEventAtPosition(
+              name,
+              tag,
+              x,
+              y,
+              z,
+              vx,
+              vy,
+              vz,
+              fx,
+              fy,
+              fz,
+              ux,
+              uy,
+              uz,
+              destroyWhenStopped
+            ),
+        ],
+        [
           "set-event-parameter",
           ([name, tag, param, value, ignoreSeekSpeed, isId = false]) =>
             this.setEventParameter(
@@ -599,6 +636,51 @@ export default function (parentClass) {
       } catch (error) {
         console.error(
           `FMOD [startEvent]: Failed for event="${event}", tags="${tags}"`,
+          error
+        );
+        return null;
+      }
+    }
+
+    startEventAtPosition(
+      event,
+      tags,
+      x,
+      y,
+      z,
+      vx,
+      vy,
+      vz,
+      fx,
+      fy,
+      fz,
+      ux,
+      uy,
+      uz,
+      destroyWhenStopped
+    ) {
+      if (!this.wrapper) return null;
+      try {
+        return this.wrapper.startEventAtPosition(
+          event,
+          tags,
+          x,
+          y,
+          z,
+          vx,
+          vy,
+          vz,
+          fx,
+          fy,
+          fz,
+          ux,
+          uy,
+          uz,
+          destroyWhenStopped
+        );
+      } catch (error) {
+        console.error(
+          `FMOD [startEventAtPosition]: Failed for event="${event}", tags="${tags}"`,
           error
         );
         return null;

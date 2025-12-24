@@ -859,6 +859,113 @@ export default class FMODWrapper {
     return id;
   }
 
+  /**
+   * Create and start an event at a specific 3D position
+   * @param {string} name - Event path
+   * @param {string} tags - Space-separated tags
+   * @param {number} x - Position X
+   * @param {number} y - Position Y
+   * @param {number} z - Position Z
+   * @param {number} vx - Velocity X
+   * @param {number} vy - Velocity Y
+   * @param {number} vz - Velocity Z
+   * @param {number} fx - Forward X
+   * @param {number} fy - Forward Y
+   * @param {number} fz - Forward Z
+   * @param {number} ux - Up X
+   * @param {number} uy - Up Y
+   * @param {number} uz - Up Z
+   * @param {boolean} destroyWhenStopped - Auto-release when stopped
+   * @returns {number|null} Instance ID or null on failure
+   */
+  startEventAtPosition(
+    name,
+    tags = "",
+    x,
+    y,
+    z,
+    vx,
+    vy,
+    vz,
+    fx,
+    fy,
+    fz,
+    ux,
+    uy,
+    uz,
+    destroyWhenStopped = true
+  ) {
+    const id = this.instantiateEvent(name, tags);
+    this.currentCycleCalls.push({
+      method: "startEventAtPosition",
+      params: {
+        name,
+        tags,
+        x,
+        y,
+        z,
+        vx,
+        vy,
+        vz,
+        fx,
+        fy,
+        fz,
+        ux,
+        uy,
+        uz,
+        destroyWhenStopped,
+        id,
+      },
+      timestamp: Date.now(),
+    });
+    if (id === null) return null;
+
+    const data = this.instances.get(id);
+    data.autoRelease = destroyWhenStopped;
+
+    // Set 3D attributes before starting
+    const attributes = FMOD._3D_ATTRIBUTES();
+    attributes.position.x = x;
+    attributes.position.y = y;
+    attributes.position.z = z;
+    attributes.velocity.x = vx;
+    attributes.velocity.y = vy;
+    attributes.velocity.z = vz;
+    attributes.forward.x = fx;
+    attributes.forward.y = fy;
+    attributes.forward.z = fz;
+    attributes.up.x = ux;
+    attributes.up.y = uy;
+    attributes.up.z = uz;
+
+    const attrResult = data.instance.set3DAttributes(attributes);
+    if (attrResult !== FMOD.OK) {
+      console.warn(
+        `Failed to set 3D attributes on event "${name}": ${FMOD.ErrorString(
+          attrResult
+        )}`
+      );
+    }
+
+    // Start the event
+    const result = data.instance.start();
+    if (result !== FMOD.OK) {
+      console.error(
+        `Failed to start event "${name}": ${FMOD.ErrorString(result)}`
+      );
+      try {
+        data.instance.release();
+      } catch (error) {
+        console.warn(`Error releasing failed instance:`, error);
+      }
+      data.instance = null; // Prevent double-release
+      this._removeInstance(id);
+      return null;
+    }
+
+    return id;
+  }
+
   // ==================== Event Parameters ====================
 
   /**
