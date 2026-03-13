@@ -22,11 +22,11 @@ export const files = {
   extensionScript: {},
   fileDependencies: [
     {
-      filename: "fmodstudioL.js",
+      filename: "fmodstudio.js",
       type: "external-dom-script",
     },
     {
-      filename: "fmodstudioL.wasm",
+      filename: "fmodstudio.wasm",
       type: "copy-to-output",
       fileType: "application/wasm",
     },
