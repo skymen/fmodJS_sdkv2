@@ -8,5 +8,10 @@
     "added": "",
     "changed": "Moved to non debug version of the library",
     "fixed": ""
+  },
+  "2.1.3.2": {
+    "added": "",
+    "changed": "",
+    "fixed": "Should no longer crash on older versions of C3"
   }
 }

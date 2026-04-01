@@ -1,11 +1,16 @@
 <img src="./examples/cover.webp" width="150" /><br>
 # (FMOD) JS API
 <i>JS Implementation of FMOD for Construct 3</i> <br>
-### Version 2.1.3.1
+### Version 2.1.3.2
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.1.3.1.c3addon/skymen_fmod_js-2.1.3.1.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.1.3.2.c3addon/skymen_fmod_js-2.1.3.2.c3addon)
 <br>
 <sub> [See all releases](https://github.com/skymen/fmodJS_sdkv2/releases) </sub> <br>
+
+#### What's New in 2.1.3.2
+- **Fixed:** Should no longer crash on older versions of C3
+
+<sub>[View full changelog](#changelog)</sub>
 
 ---
 <b><u>Author:</u></b> skymen <br>
@@ -62,3 +67,17 @@ npm run dev
 ## Expressions
 | Expression | Description | Return Type | Params
 | --- | --- | --- | --- |
+
+
+---
+## Changelog
+
+**2.1.3.2**
+- **Fixed:** Should no longer crash on older versions of C3
+
+**2.1.3.1**
+- **Changed:** Moved to non debug version of the library
+
+**2.1.3.0**
+- **Added:** Start Event At Position
+- **Fixed:** Bug where Start Event At Object could cause an audio glitch
