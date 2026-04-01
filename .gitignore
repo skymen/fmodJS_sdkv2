@@ -4,3 +4,4 @@ node_modules
 template/projectData.json
 .DS_Store
 docs/
+.dev-server-running
