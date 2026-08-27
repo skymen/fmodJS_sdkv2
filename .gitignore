@@ -2,6 +2,9 @@ dist
 generated
 node_modules
 template/projectData.json
-.DS_Store
 docs/
 .dev-server-running
+.DS_Store
+.khabot/
+.khabot-desktop/
+.khabot-studio/
