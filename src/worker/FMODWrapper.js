@@ -31,6 +31,10 @@ export default class FMODWrapper {
     this._audioResumed = false;
     FMOD = _FMOD;
 
+    // Called with { name, tags, id } whenever an instance we started stops
+    // (natural end, stop action, bus stop...). id is null for one-shots.
+    this.onEventStopped = null;
+
     // Bank management
     this.banks = new Map(); // bankName -> { handle, loaded, loading }
 
@@ -228,8 +232,16 @@ export default class FMODWrapper {
    * @private
    */
   _processPendingReleases() {
-    for (const { instance, stopMode } of this.pendingRelease) {
+    for (const { instance, stopMode, data } of this.pendingRelease) {
       try {
+        // FMOD destroys the instance once it has stopped; without a release
+        // the instances pile up forever. But releasing an instance that is
+        // still playing (fading out, or stopped in the same batch) makes
+        // FMOD skip its STOPPED callback, so unless it has already stopped
+        // the callback does the releasing (see _watchStop).
+        const deferRelease = data && !data.stopped;
+        if (deferRelease) data.releaseOnStop = true;
+
         // Stop the instance if stopMode is provided
         if (stopMode !== null) {
           const stopResult = instance.stop(stopMode);
@@ -239,14 +251,7 @@ export default class FMODWrapper {
             );
           }
         }
-        // FMOD destroys the instance once it has stopped (after the fade
-        // out, if any); without this the instances pile up forever.
-        const releaseResult = instance.release();
-        if (releaseResult !== FMOD.OK) {
-          console.warn(
-            `Failed to release pending instance: ${FMOD.ErrorString(releaseResult)}`
-          );
-        }
+        if (!deferRelease) this._release(instance);
       } catch (error) {
         console.warn(`Error processing pending release:`, error);
       }
@@ -782,6 +787,12 @@ export default class FMODWrapper {
     }
 
     const instance = instanceOut.val;
+    // Released from the STOPPED callback: releasing while it plays would
+    // make FMOD skip that callback
+    this._watchStop(instance, name, "", null, {
+      stopWaiters: [],
+      releaseOnStop: true,
+    });
 
     result = instance.start();
     if (result !== FMOD.OK) {
@@ -792,8 +803,6 @@ export default class FMODWrapper {
       return false;
     }
 
-    // Release immediately - FMOD will keep it alive until it finishes
-    instance.release();
     return true;
   }
 
@@ -840,8 +849,11 @@ export default class FMODWrapper {
       tags: tagSet,
       released: false,
       autoRelease: false,
+      stopped: false, // set by the STOPPED callback
+      stopWaiters: [], // resolvers from waitForEventStop
     };
     this.instances.set(id, data);
+    this._watchStop(instance, name, tags, id, data);
 
     // Update tag index
     for (const tag of tagSet) {
@@ -1174,6 +1186,7 @@ export default class FMODWrapper {
         this.pendingRelease.push({
           instance: data.instance,
           stopMode: stopMode,
+          data,
         });
 
         // Remove from tracking immediately to prevent further operations
@@ -1309,24 +1322,54 @@ export default class FMODWrapper {
       return Promise.resolve();
     }
 
+    // FMOD keeps a single callback per instance (set in _watchStop), so
+    // waiters queue up on the instance and get resolved from there
     return Promise.all(
-      instances.map(({ data }) => {
-        return new Promise((resolve) => {
-          const result = data.instance.setCallback(
-            () => resolve(),
-            FMOD.STUDIO_EVENT_CALLBACK_STOPPED
-          );
-          if (result !== FMOD.OK) {
-            console.warn(
-              `Failed to set callback for waitForEventStop: ${FMOD.ErrorString(
-                result
-              )}`
-            );
-            resolve(); // Resolve anyway to avoid hanging
-          }
-        });
-      })
+      instances.map(
+        ({ data }) => new Promise((resolve) => data.stopWaiters.push(resolve))
+      )
     );
+  }
+
+  /** @private */
+  _release(instance) {
+    const result = instance.release();
+    if (result !== FMOD.OK) {
+      console.warn(`Failed to release instance: ${FMOD.ErrorString(result)}`);
+    }
+  }
+
+  /**
+   * Attach the one STOPPED callback an instance gets: it resolves pending
+   * waitForEventStop promises, releases the instance when that was deferred
+   * to the stop, and notifies onEventStopped.
+   * @private
+   */
+  _watchStop(instance, name, tags, id, data) {
+    const result = instance.setCallback(() => {
+      if (data) {
+        data.stopped = true;
+        const waiters = data.stopWaiters;
+        data.stopWaiters = [];
+        for (const resolve of waiters) resolve();
+        if (data.releaseOnStop) {
+          data.releaseOnStop = false;
+          this._release(instance);
+        }
+      }
+      if (this.onEventStopped) {
+        try {
+          this.onEventStopped({ name, tags, id });
+        } catch (error) {
+          console.error("FMOD [onEventStopped]:", error);
+        }
+      }
+    }, FMOD.STUDIO_EVENT_CALLBACK_STOPPED);
+    if (result !== FMOD.OK) {
+      console.warn(
+        `Failed to set stop callback for "${name}": ${FMOD.ErrorString(result)}`
+      );
+    }
   }
 
   // ==================== 3D Positioning ====================

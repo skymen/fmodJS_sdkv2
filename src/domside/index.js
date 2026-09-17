@@ -141,6 +141,9 @@ export default function (parentClass) {
           }
           break;
         }
+        case "toRuntime":
+          this.PostToRuntime(m.name, m.data);
+          break;
         case "resume":
           this.audioContext.resume().catch(() => {});
           break;

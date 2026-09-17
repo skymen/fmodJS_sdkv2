@@ -28,5 +28,10 @@
     "added": "",
     "changed": "",
     "fixed": "Library, wasm and banks are now fetched by the page and handed to the worker; the worker's own requests aren't served in Construct's preview, so 2.2.0.0 failed to load there"
+  },
+  "2.2.1.0": {
+    "added": "Sends an \"event-stopped\" message to the runtime whenever an event instance stops (used by the FMOD plugin's On Event Stopped triggers)",
+    "changed": "Instances released while still playing (one-shots, stop with fade out) are now released once they have stopped, so FMOD reports the stop",
+    "fixed": ""
   }
 }

@@ -109,6 +109,8 @@ function configure(m) {
     audioWindow,
     libBase: m.libBase,
     fetchArrayBuffer,
+    postToRuntime: (name, data) =>
+      postMessage({ type: "toRuntime", name, data }),
   });
   for (const name of messageNames) {
     if (!manager._handlers.has(name))

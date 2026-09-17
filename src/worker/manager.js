@@ -16,6 +16,8 @@ export default function (parentClass) {
       this.libBase = options.libBase || "";
       // Loads a URL through the main thread (see index.js)
       this.fetchArrayBuffer = options.fetchArrayBuffer || null;
+      // Sends a message to the runtime, fire and forget (see index.js)
+      this.postToRuntime = options.postToRuntime || (() => {});
 
       // FMOD Configuration
       this.FMOD = {};
@@ -455,6 +457,8 @@ export default function (parentClass) {
     async initWrapper() {
       // Create wrapper instance
       this.wrapper = new FMODWrapper(this.FMOD);
+      this.wrapper.onEventStopped = ({ name, tags, id }) =>
+        this.postToRuntime("event-stopped", { name, tag: tags, id });
 
       // Let the wrapper initialize FMOD with custom options
       await this.wrapper.initialize({
