@@ -16,6 +16,7 @@ build([
   "./exportWebpack.js",
   "./validateTerser.js",
   "./buildDomside.js",
+  "./buildBundledDependencies.js",
   "./generateWrapperExtensionDev.js",
   "./processDependencies.js",
   "./validateIcon.js",

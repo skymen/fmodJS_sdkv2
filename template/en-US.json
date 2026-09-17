@@ -8,7 +8,12 @@
         "description": "JS Implementation of FMOD for Construct 3",
         "help-url": "https://www.construct.net/en/make-games/addons/1207/fmod-js-api/documentation",
         "aceCategories": {},
-        "properties": {},
+        "properties": {
+          "debug": {
+            "name": "Debug",
+            "desc": "Use the logging build of the FMOD library (fmodstudioL). FMOD's internal log is printed to the browser console. Larger and slower, keep it off for release builds."
+          }
+        },
         "actions": {},
         "conditions": {},
         "expressions": {}

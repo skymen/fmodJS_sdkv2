@@ -26,7 +26,8 @@
     "init": "npm install && node build/init.js",
     "generateDocs": "cd build && node generateDocumentation.js",
     "publish": "cd build && node publish.js",
-    "setupPublish": "cd build && node setupPublish.js"
+    "setupPublish": "cd build && node setupPublish.js",
+    "patchFmodLibs": "node tools/patchFmodLibs.js"
   },
   "dependencies": {}
 }

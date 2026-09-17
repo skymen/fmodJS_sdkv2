@@ -5,7 +5,9 @@ export default function (parentClass) {
     constructor() {
       super();
       const properties = this._getInitProperties();
+      this.debugLib = false;
       if (properties) {
+        this.debugLib = !!properties[0];
       }
 
       if (!C3.Plugins.skymen_fmod) {
@@ -14,6 +16,8 @@ export default function (parentClass) {
         );
       }
 
+      // Tells the FMOD plugin it doesn't need to send "update" every tick
+      this.selfUpdating = true;
       globalThis.__skymen_fmod_js = this;
     }
 
@@ -22,6 +26,8 @@ export default function (parentClass) {
     }
 
     SendMessageAsync(id, data) {
+      // The FMOD plugin drives init; the library choice is ours, so attach it.
+      if (id === "pre-init") data = { ...data, libDebug: this.debugLib };
       return this._postToDOMAsync(id, data);
     }
 

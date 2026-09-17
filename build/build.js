@@ -20,6 +20,7 @@ const buildSteps = [
   "./exportWebpack.js",
   "./validateTerser.js",
   "./buildDomside.js",
+  "./buildBundledDependencies.js",
   "./generateWrapperExtension.js",
   "./processDependencies.js",
   "./validateIcon.js",

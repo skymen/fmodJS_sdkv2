@@ -266,6 +266,9 @@ const configSchema = Joi.object({
               "external-css"
             )
             .required(),
+          // Path (relative to the project root) of a module entry that is
+          // vite-bundled into this file instead of copied from src/files.
+          bundle: Joi.string().optional(),
         }).when(
           Joi.object({ type: Joi.string().valid("copy-to-output") }).unknown(),
           {

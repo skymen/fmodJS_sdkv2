@@ -23,14 +23,33 @@ export const files = {
   extensionScript: {},
   fileDependencies: [
     {
-      filename: "fmodstudio.js",
+      filename: "fmodloader.js",
       type: "external-dom-script",
     },
+    // FMOD runs in this worker (bundled from src/worker/index.js)
     {
-      filename: "fmodstudio.wasm",
+      filename: "fmodworker.js",
       type: "copy-to-output",
-      fileType: "application/wasm",
+      fileType: "text/javascript",
+      bundle: "src/worker/index.js",
     },
+    // Library variants, picked at runtime by the DOM side (see LoadLibrary):
+    // fmodstudio = release, fmodstudioL = release + logging.
+    // Only the selected variant is ever fetched.
+    ...["fmodstudio", "fmodstudioL"].flatMap(
+      (name) => [
+        {
+          filename: `${name}.js`,
+          type: "copy-to-output",
+          fileType: "text/javascript",
+        },
+        {
+          filename: `${name}.wasm`,
+          type: "copy-to-output",
+          fileType: "application/wasm",
+        },
+      ]
+    ),
   ],
 };
 
@@ -76,40 +95,13 @@ export const info = {
 };
 
 export const properties = [
-  /*
   {
-    type: PROPERTY_TYPE.INTEGER,
-    id: "property_id",
+    type: PROPERTY_TYPE.CHECK,
+    id: "debug",
     options: {
-      initialValue: 0,
-      interpolatable: false,
-
-      // minValue: 0, // omit to disable
-      // maxValue: 100, // omit to disable
-
-      // for type combo only
-      // items: [
-      //   {itemId1: "item name1" },
-      //   {itemId2: "item name2" },
-      // ],
-
-      // dragSpeedMultiplier: 1, // omit to disable
-
-      // for type object only
-      // allowedPluginIds: ["Sprite", "<world>"],
-
-      // for type link only
-      // linkCallback: function(instOrObj) {},
-      // linkText: "Link Text",
-      // callbackType:
-      //   "for-each-instance"
-      //   "once-for-type"
-
-      // for type info only
-      // infoCallback: function(inst) {},
+      initialValue: false,
     },
-    name: "Property Name",
-    desc: "Property Description",
-  }
-  */
-];
+    name: "Debug",
+    desc: "Use the logging build of the FMOD library (fmodstudioL). FMOD's internal log is printed to the browser console. Larger and slower, keep it off for release builds.",
+  },
+]

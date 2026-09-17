@@ -13,8 +13,31 @@ export default function processDependencies() {
   chalkUtils.step("Processing dependencies");
 
   let filesToCopy = [];
-  if (files.fileDependencies)
-    filesToCopy.push(...files.fileDependencies.map((file) => file.filename));
+  let bundledFiles = [];
+  if (files.fileDependencies) {
+    filesToCopy.push(
+      ...files.fileDependencies
+        .filter((file) => !file.bundle)
+        .map((file) => file.filename)
+    );
+    bundledFiles.push(
+      ...files.fileDependencies
+        .filter((file) => file.bundle)
+        .map((file) => file.filename)
+    );
+  }
+
+  bundledFiles.forEach((file) => {
+    const src = path.resolve(path.join("../generated", file));
+    const dest = path.resolve(path.join("../dist/export/c3runtime", file));
+
+    if (!fs.existsSync(src)) {
+      chalkUtils.error(`File not found: ${chalkUtils._errorUnderline(src)}`);
+      hadError = true;
+    } else {
+      fs.copyFileSync(src, dest);
+    }
+  });
 
   filesToCopy.forEach((file) => {
     const src = path.resolve(path.join("../src/files", file));

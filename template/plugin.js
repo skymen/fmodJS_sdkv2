@@ -46,7 +46,7 @@ export default function (ADDON_INFO, parentClass) {
       }
 
       if (ADDON_INFO.files.fileDependencies) {
-        ADDON_INFO.files.fileDependencies.forEach((file) => {
+        ADDON_INFO.files.fileDependencies.forEach(({ bundle, ...file }) => {
           this._info.AddFileDependency({
             ...file,
             filename: `c3runtime/${file.filename}`,

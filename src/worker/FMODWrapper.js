@@ -28,6 +28,7 @@ export default class FMODWrapper {
     this.system = null;
     this.coreSystem = null;
     this.initialized = false;
+    this._audioResumed = false;
     FMOD = _FMOD;
 
     // Bank management
@@ -238,6 +239,14 @@ export default class FMODWrapper {
             );
           }
         }
+        // FMOD destroys the instance once it has stopped (after the fade
+        // out, if any); without this the instances pile up forever.
+        const releaseResult = instance.release();
+        if (releaseResult !== FMOD.OK) {
+          console.warn(
+            `Failed to release pending instance: ${FMOD.ErrorString(releaseResult)}`
+          );
+        }
       } catch (error) {
         console.warn(`Error processing pending release:`, error);
       }
@@ -429,20 +438,30 @@ export default class FMODWrapper {
    * @returns {Promise} Resolves when target state is reached
    */
   awaitBankLoadingState(bankHandle, targetState) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const outval = {};
-      bankHandle.getLoadingState(outval);
-      if (outval.val === targetState) {
-        resolve();
-        return;
-      }
+      // An error (e.g. an invalidated handle) can never reach the target
+      // state, so give up instead of polling forever
+      const check = () => {
+        const result = bankHandle.getLoadingState(outval);
+        if (result !== FMOD.OK) {
+          reject(
+            new Error(
+              `Failed to get bank loading state: ${FMOD.ErrorString(result)}`
+            )
+          );
+          return true;
+        }
+        if (outval.val === targetState) {
+          resolve();
+          return true;
+        }
+        return false;
+      };
+      if (check()) return;
 
       const interval = setInterval(() => {
-        bankHandle.getLoadingState(outval);
-        if (outval.val === targetState) {
-          clearInterval(interval);
-          resolve();
-        }
+        if (check()) clearInterval(interval);
       }, 100);
     });
   }
@@ -508,9 +527,19 @@ export default class FMODWrapper {
    * @returns {Promise} Resolves when target state is reached
    */
   awaitBankSampleLoadingState(bankHandle, targetState) {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const outval = {};
-      bankHandle.getSampleLoadingState(outval);
+      const fail = (result) =>
+        reject(
+          new Error(
+            `Failed to get bank sample loading state: ${FMOD.ErrorString(result)}`
+          )
+        );
+      let result = bankHandle.getSampleLoadingState(outval);
+      if (result !== FMOD.OK) {
+        fail(result);
+        return;
+      }
       if (outval.val === targetState) {
         resolve();
         return;
@@ -520,8 +549,11 @@ export default class FMODWrapper {
       let elapsed = duration;
 
       const interval = setInterval(() => {
-        bankHandle.getSampleLoadingState(outval);
-        if (outval.val === targetState) {
+        result = bankHandle.getSampleLoadingState(outval);
+        if (result !== FMOD.OK) {
+          clearInterval(interval);
+          fail(result);
+        } else if (outval.val === targetState) {
           clearInterval(interval);
           resolve();
         } else {
@@ -1666,45 +1698,21 @@ export default class FMODWrapper {
   }
 
   /**
-   * Set up audio resume handlers for iOS/Chrome workaround
-   * Sets up event listeners that resume audio on user interaction
+   * iOS/Chrome workaround: resume audio on user interaction. The listeners
+   * live on the main thread (see domside/index.js); it calls this with
+   * real=true on the first interaction and real=false for the initial attempt.
+   * @param {boolean} real - Whether this comes from an actual user gesture
    */
-  setupAudioResumeHandlers() {
-    let audioResumed = false;
-    // Listen to various user interaction events
-    const interactionEvents = [
-      "click",
-      "touchstart",
-      "keydown",
-      "mousedown",
-      "mouseup",
-      "touchend",
-      "touchcancel",
-    ];
-
-    const resumeOnInteraction = (real = true) => {
-      if (!audioResumed && this.initialized) {
-        this.resumeAudio();
-        if (real) {
-          audioResumed = true;
-          // Mark FMOD as having received input
-          if (FMOD) {
-            FMOD.mInputRegistered = true;
-          }
-          // Remove all listeners after first real interaction
-          interactionEvents.forEach((eventType) => {
-            document.removeEventListener(eventType, resumeOnInteraction);
-          });
-        }
+  onUserInteraction(real = true) {
+    if (this._audioResumed || !this.initialized) return;
+    this.resumeAudio();
+    if (real) {
+      this._audioResumed = true;
+      // Mark FMOD as having received input
+      if (FMOD) {
+        FMOD.mInputRegistered = true;
       }
-    };
-
-    interactionEvents.forEach((eventType) => {
-      document.addEventListener(eventType, resumeOnInteraction, { once: true });
-    });
-
-    // Attempt initial resume
-    resumeOnInteraction(false);
+    }
   }
 
   // ==================== Utility Methods ====================
