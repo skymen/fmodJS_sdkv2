@@ -33,5 +33,10 @@
     "added": "Sends an \"event-stopped\" message to the runtime whenever an event instance stops (used by the FMOD plugin's On Event Stopped triggers)",
     "changed": "Instances released while still playing (one-shots, stop with fade out) are now released once they have stopped, so FMOD reports the stop",
     "fixed": ""
+  },
+  "2.2.1.1": {
+    "added": "",
+    "changed": "",
+    "fixed": "Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes"
   }
 }

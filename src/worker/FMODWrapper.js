@@ -849,6 +849,7 @@ export default class FMODWrapper {
       tags: tagSet,
       released: false,
       autoRelease: false,
+      started: false, // false while only instantiated
       stopped: false, // set by the STOPPED callback
       stopWaiters: [], // resolvers from waitForEventStop
     };
@@ -867,28 +868,46 @@ export default class FMODWrapper {
   }
 
   /**
-   * Create and start an event
+   * Start an event. Instances with exactly these tags that were created by
+   * instantiateEvent and never started (so parameters or 3D attributes
+   * could be set first) are the ones started; otherwise a new instance is
+   * created. Instances already started are never touched.
    * @param {string} name - Event path
    * @param {string} tags - Space-separated tags
    * @param {boolean} destroyWhenStopped - Auto-release when stopped
-   * @returns {number|null} Instance ID or null on failure
+   * @returns {number|null} ID of the (first) started instance, or null on failure
    */
   startEvent(name, tags = "", destroyWhenStopped = true) {
-    const id = this.instantiateEvent(name, tags);
+    const pending = this._getPendingInstances(name, tags);
+    const ids = pending.length ? pending : [this.instantiateEvent(name, tags)];
     this.currentCycleCalls.push({
       method: "startEvent",
-      params: { name, tags, destroyWhenStopped, id },
+      params: { name, tags, destroyWhenStopped, ids },
       timestamp: Date.now(),
     });
-    if (id === null) return null;
 
+    let firstId = null;
+    for (const id of ids) {
+      if (id === null) continue;
+      if (this._startInstance(id, destroyWhenStopped) && firstId === null)
+        firstId = id;
+    }
+    return firstId;
+  }
+
+  /**
+   * Start a tracked instance, dropping it if FMOD refuses.
+   * @private
+   * @returns {boolean} Whether it started
+   */
+  _startInstance(id, destroyWhenStopped) {
     const data = this.instances.get(id);
     data.autoRelease = destroyWhenStopped;
 
     const result = data.instance.start();
     if (result !== FMOD.OK) {
       console.error(
-        `Failed to start event "${name}": ${FMOD.ErrorString(result)}`
+        `Failed to start event "${data.name}": ${FMOD.ErrorString(result)}`
       );
       try {
         data.instance.release();
@@ -897,10 +916,32 @@ export default class FMODWrapper {
       }
       data.instance = null; // Prevent double-release
       this._removeInstance(id);
-      return null;
+      return false;
     }
+    data.started = true;
+    return true;
+  }
 
-    return id;
+  /**
+   * Instantiated-but-never-started instances of an event whose tag set is
+   * exactly `tags` (an empty string matches untagged instances only).
+   * @private
+   * @returns {number[]} Instance IDs
+   */
+  _getPendingInstances(name, tags) {
+    const wanted = (tags || "")
+      .split(/\s+/)
+      .map((t) => t.trim())
+      .filter((t) => t);
+    const ids = [];
+    for (const [id, data] of this.instances) {
+      if (data.started || data.released || data.name !== name) continue;
+      if (data.tags.size !== wanted.length) continue;
+      if (!wanted.every((t) => data.tags.has(t))) continue;
+      if (!this._isInstanceValid(data.instance)) continue;
+      ids.push(id);
+    }
+    return ids;
   }
 
   /**
@@ -992,22 +1033,7 @@ export default class FMODWrapper {
     }
 
     // Start the event
-    const result = data.instance.start();
-    if (result !== FMOD.OK) {
-      console.error(
-        `Failed to start event "${name}": ${FMOD.ErrorString(result)}`
-      );
-      try {
-        data.instance.release();
-      } catch (error) {
-        console.warn(`Error releasing failed instance:`, error);
-      }
-      data.instance = null; // Prevent double-release
-      this._removeInstance(id);
-      return null;
-    }
-
-    return id;
+    return this._startInstance(id, destroyWhenStopped) ? id : null;
   }
 
   // ==================== Event Parameters ====================

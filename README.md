@@ -1,15 +1,14 @@
 <img src="./examples/cover.webp" width="150" /><br>
 # (FMOD) JS API
 <i>JS Implementation of FMOD for Construct 3</i> <br>
-### Version 2.2.1.0
+### Version 2.2.1.1
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.2.1.0.c3addon/skymen_fmod_js-2.2.1.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.2.1.1.c3addon/skymen_fmod_js-2.2.1.1.c3addon)
 <br>
 <sub> [See all releases](https://github.com/skymen/fmodJS_sdkv2/releases) </sub> <br>
 
-#### What's New in 2.2.1.0
-- **Added:** Sends an "event-stopped" message to the runtime whenever an event instance stops (used by the FMOD plugin's On Event Stopped triggers)
-- **Changed:** Instances released while still playing (one-shots, stop with fade out) are now released once they have stopped, so FMOD reports the stop
+#### What's New in 2.2.1.1
+- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -73,6 +72,9 @@ npm run dev
 
 ---
 ## Changelog
+
+**2.2.1.1**
+- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes
 
 **2.2.1.0**
 - **Added:** Sends an "event-stopped" message to the runtime whenever an event instance stops (used by the FMOD plugin's On Event Stopped triggers)
