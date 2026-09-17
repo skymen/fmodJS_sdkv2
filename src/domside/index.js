@@ -117,6 +117,30 @@ export default function (parentClass) {
           }
           break;
         }
+        case "fetch": {
+          // Resolved against the page, fetched through whatever serves it
+          // (Construct's preview service worker included)
+          try {
+            const url = new URL(m.url, location.href).href;
+            const response = await fetch(url);
+            if (!response.ok)
+              throw new Error(`${response.status} ${response.statusText}`);
+            const buffer = await response.arrayBuffer();
+            this.worker.postMessage(
+              { type: "fetchResult", id: m.id, buffer },
+              [buffer]
+            );
+          } catch (error) {
+            this.worker.postMessage({
+              type: "fetchResult",
+              id: m.id,
+              error: `Failed to fetch ${m.url}: ${
+                (error && error.message) || error
+              }`,
+            });
+          }
+          break;
+        }
         case "resume":
           this.audioContext.resume().catch(() => {});
           break;

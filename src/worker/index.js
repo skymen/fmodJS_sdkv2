@@ -86,6 +86,20 @@ class WorkerHandlerBase {
   }
 }
 
+// Network requests made from inside the worker aren't served in Construct's
+// preview (only the page goes through its service worker), and relative URLs
+// don't resolve against a blob: worker, so every load goes via the main
+// thread and comes back as a transferred ArrayBuffer.
+let nextFetchId = 1;
+const pendingFetches = new Map();
+function fetchArrayBuffer(url) {
+  return new Promise((resolve, reject) => {
+    const id = nextFetchId++;
+    pendingFetches.set(id, { resolve, reject });
+    postMessage({ type: "fetch", id, url });
+  });
+}
+
 let manager = null;
 
 function configure(m) {
@@ -94,6 +108,7 @@ function configure(m) {
   manager = new (createManager(WorkerHandlerBase))({
     audioWindow,
     libBase: m.libBase,
+    fetchArrayBuffer,
   });
   for (const name of messageNames) {
     if (!manager._handlers.has(name))
@@ -137,6 +152,14 @@ self.onmessage = (ev) => {
         pendingAddModule = null;
       }
       break;
+    case "fetchResult": {
+      const p = pendingFetches.get(m.id);
+      if (!p) break;
+      pendingFetches.delete(m.id);
+      if (m.error !== undefined) p.reject(new Error(m.error));
+      else p.resolve(m.buffer);
+      break;
+    }
     case "workletError":
       if (pendingAddModule) {
         pendingAddModule.reject(new Error(m.error));

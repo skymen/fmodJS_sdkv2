@@ -14,6 +14,8 @@ export default function (parentClass) {
       // Audio shim handed to FMOD as Module.window (see index.js)
       this.audioWindow = options.audioWindow || null;
       this.libBase = options.libBase || "";
+      // Loads a URL through the main thread (see index.js)
+      this.fetchArrayBuffer = options.fetchArrayBuffer || null;
 
       // FMOD Configuration
       this.FMOD = {};
@@ -368,20 +370,38 @@ export default function (parentClass) {
       };
     }
 
-    LoadLibrary() {
+    async LoadLibrary() {
       if (this._libraryLoading || globalThis.FMODModule) return;
       this._libraryLoading = true;
 
       const base = this.libBase;
       const info = this.SelectLibrary();
       const url = base + info.name + ".js";
+      const wasmUrl = base + info.name + ".wasm";
 
       // Emscripten resolves the .wasm relative to this
       this.FMOD["locateFile"] = (path) => base + path;
       if (this.audioWindow) this.FMOD["window"] = this.audioWindow;
 
       try {
-        importScripts(url);
+        if (this.fetchArrayBuffer) {
+          // Hand Emscripten the wasm bytes so it never fetches on its own
+          const [script, wasm] = await Promise.all([
+            this.fetchArrayBuffer(url),
+            this.fetchArrayBuffer(wasmUrl),
+          ]);
+          this.FMOD["wasmBinary"] = wasm;
+          const blobUrl = URL.createObjectURL(
+            new Blob([script], { type: "text/javascript" })
+          );
+          try {
+            importScripts(blobUrl);
+          } finally {
+            URL.revokeObjectURL(blobUrl);
+          }
+        } else {
+          importScripts(url);
+        }
         this.libraryInfo = info;
         console.info(
           `FMOD: loaded ${info.name}.js${info.debug ? " (logging build)" : ""}`
@@ -528,6 +548,9 @@ export default function (parentClass) {
 
     async fetchUrlAsInt8Array(url) {
       try {
+        if (this.fetchArrayBuffer) {
+          return new Int8Array(await this.fetchArrayBuffer(url));
+        }
         const response = await fetch(url);
         if (!response.ok) {
           throw new Error(`HTTP error! Status: ${response.status}`);

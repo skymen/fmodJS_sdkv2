@@ -1,21 +1,14 @@
 <img src="./examples/cover.webp" width="150" /><br>
 # (FMOD) JS API
 <i>JS Implementation of FMOD for Construct 3</i> <br>
-### Version 2.2.0.0
+### Version 2.2.0.1
 
-[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.2.0.0.c3addon/skymen_fmod_js-2.2.0.0.c3addon)
+[<img src="https://placehold.co/200x50/4493f8/FFF?text=Download&font=montserrat" width="200"/>](https://github.com/skymen/fmodJS_sdkv2/releases/download/skymen_fmod_js-2.2.0.1.c3addon/skymen_fmod_js-2.2.0.1.c3addon)
 <br>
 <sub> [See all releases](https://github.com/skymen/fmodJS_sdkv2/releases) </sub> <br>
 
-#### What's New in 2.2.0.0
-- **Added:** - Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed
-- **Changed:** - FMOD now runs in a dedicated web worker. Mixing no longer depends on the main thread, so lag spikes, debugger pauses and other freezes in the game no longer stutter audio playback
-- **Changed:** - Studio update runs on the worker's own clock instead of the runtime tick
-- **Changed:** - Updated to FMOD 2.03.14
-- **Changed:** - Both the release and logging libraries ship in the addon; only the selected one is loaded
-- **Fixed:** - Unload Bank / Unload All Banks never completed (the bank handle is invalid as soon as FMOD unloads it, and the plugin kept polling it)
-- **Fixed:** - Stopping an event with release did not actually release the FMOD instance, so instances piled up over time
-- **Fixed:** - Node environment detection fix is now applied to the release library too (fixes crashes on NW.js-style hosts)
+#### What's New in 2.2.0.1
+- **Fixed:** Library, wasm and banks are now fetched by the page and handed to the worker; the worker's own requests aren't served in Construct's preview, so 2.2.0.0 failed to load there
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -79,6 +72,9 @@ npm run dev
 
 ---
 ## Changelog
+
+**2.2.0.1**
+- **Fixed:** Library, wasm and banks are now fetched by the page and handed to the worker; the worker's own requests aren't served in Construct's preview, so 2.2.0.0 failed to load there
 
 **2.2.0.0**
 - **Added:** - Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed
