@@ -20,7 +20,7 @@
     "fixed": "Fixed a bug that could cause naming conflicts on the domside"
   },
   "2.2.0.0": {
-    "added": "- Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed\n- tools/patchFmodLibs.js: imports the FMOD HTML5 libraries from an SDK and re-applies the local fixes",
+    "added": "- Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed",
     "changed": "- FMOD now runs in a dedicated web worker. Mixing no longer depends on the main thread, so lag spikes, debugger pauses and other freezes in the game no longer stutter audio playback\n- Studio update runs on the worker's own clock instead of the runtime tick\n- Updated to FMOD 2.03.14\n- Both the release and logging libraries ship in the addon; only the selected one is loaded",
     "fixed": "- Unload Bank / Unload All Banks never completed (the bank handle is invalid as soon as FMOD unloads it, and the plugin kept polling it)\n- Stopping an event with release did not actually release the FMOD instance, so instances piled up over time\n- Node environment detection fix is now applied to the release library too (fixes crashes on NW.js-style hosts)"
   }

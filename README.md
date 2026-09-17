@@ -9,7 +9,6 @@
 
 #### What's New in 2.2.0.0
 - **Added:** - Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed
-- **Added:** - tools/patchFmodLibs.js: imports the FMOD HTML5 libraries from an SDK and re-applies the local fixes
 - **Changed:** - FMOD now runs in a dedicated web worker. Mixing no longer depends on the main thread, so lag spikes, debugger pauses and other freezes in the game no longer stutter audio playback
 - **Changed:** - Studio update runs on the worker's own clock instead of the runtime tick
 - **Changed:** - Updated to FMOD 2.03.14
@@ -83,7 +82,6 @@ npm run dev
 
 **2.2.0.0**
 - **Added:** - Debug property: switches to FMOD's logging build (fmodstudioL) at runtime, no separate addon needed
-- **Added:** - tools/patchFmodLibs.js: imports the FMOD HTML5 libraries from an SDK and re-applies the local fixes
 - **Changed:** - FMOD now runs in a dedicated web worker. Mixing no longer depends on the main thread, so lag spikes, debugger pauses and other freezes in the game no longer stutter audio playback
 - **Changed:** - Studio update runs on the worker's own clock instead of the runtime tick
 - **Changed:** - Updated to FMOD 2.03.14
