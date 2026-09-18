@@ -37,6 +37,6 @@
   "2.2.1.1": {
     "added": "",
     "changed": "",
-    "fixed": "Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes"
+    "fixed": "Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes.\n\nThis was a regression from the port to V2"
   }
 }

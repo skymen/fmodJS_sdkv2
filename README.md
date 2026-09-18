@@ -8,7 +8,8 @@
 <sub> [See all releases](https://github.com/skymen/fmodJS_sdkv2/releases) </sub> <br>
 
 #### What's New in 2.2.1.1
-- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes
+- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes.
+- **Fixed:** This was a regression from the port to V2
 
 <sub>[View full changelog](#changelog)</sub>
 
@@ -74,7 +75,8 @@ npm run dev
 ## Changelog
 
 **2.2.1.1**
-- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes
+- **Fixed:** Start Event now starts the instances created by Instantiate Event with the same tags (and not started yet) instead of always creating a new one, so parameters and 3D attributes set between the two actually apply. Instances already playing are never touched; without Instantiate Event nothing changes.
+- **Fixed:** This was a regression from the port to V2
 
 **2.2.1.0**
 - **Added:** Sends an "event-stopped" message to the runtime whenever an event instance stops (used by the FMOD plugin's On Event Stopped triggers)
